@@ -45,6 +45,19 @@
 
 		import { Vector3 } from "./open-utilities/maths/Vector3.ts";
 		Object.assign(globalThis, { Vector3 });
+
+		if (!Map.prototype.getOrInsertComputed) {
+			Map.prototype.getOrInsertComputed = function(key, computeValue) {
+				if (this.has(key)) {
+					return this.get(key);
+				} else {
+					const value = computeValue();
+					this.set(key, value);
+					return value;
+				}
+			}
+		}
+
 	</script>
 	<div id="debug-text" class="fill-window"></div>
 	<style>
