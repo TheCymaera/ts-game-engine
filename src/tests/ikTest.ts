@@ -205,7 +205,8 @@ let orbitAngle = 0;
 
 function retarget() {
 	desiredTargetOffset = randomVectorInRadius(targetRadius);
-	targetOrientation = Quaternion.fromAxisAngle(Vector3.new(0, 1, 0), random.nextFloat(0, Math.PI * 2));
+	//targetOrientation = Quaternion.fromAxisAngle(Vector3.new(0, 1, 0), random.nextFloat(0, Math.PI * 2));
+	targetOrientation = undefined;
 }
 retarget();
 

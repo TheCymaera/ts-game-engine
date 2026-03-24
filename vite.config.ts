@@ -9,6 +9,8 @@ export default vite.defineConfig({
 	root: absPath("src"),
 	publicDir: absPath("static"),
 
+	base: "./",
+
 	resolve: {
 		tsconfigPaths: true,
 	},
