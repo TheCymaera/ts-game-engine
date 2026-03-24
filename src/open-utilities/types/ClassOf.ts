@@ -1,0 +1,1 @@
+export type ClassOf<T> = Function & { prototype: T };

@@ -1,0 +1,27 @@
+{
+	"exclude": [
+		"node_modules",
+		"dist",
+	],
+	"compilerOptions": {
+		"module": "ESNext",
+		"target": "ESNext",
+		"moduleResolution": "bundler",
+		
+		"strict": true,
+		"noImplicitThis": true,
+		"noImplicitReturns": true,
+		"noUncheckedIndexedAccess": true,
+
+		"noEmit": true,
+		"skipDefaultLibCheck": true,
+		"skipLibCheck": true,
+
+		"lib": ["ESNext", "DOM", "DOM.Iterable"],
+		"paths": {
+			"@open-utilities/*": ["./src/open-utilities/*"],
+			"@physics2D/*": ["./src/physics2D/*"],
+			"@plugins/*": ["./src/plugins/*"],
+		}
+	}
+}

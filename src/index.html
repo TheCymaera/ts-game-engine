@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Document</title>
+	<!--<script src="./game/main.ts" type="module"></script>-->
+	<script>
+		// alert errors
+		//window.addEventListener("error", event => {
+		//	alert(`Error: ${event.message}\nAt: ${event.filename}:${event.lineno}:${event.colno}`);
+		//});
+	</script>
+	<!--<script src="./game/rendererTest.ts" type="module"></script>-->
+</head>
+<body>
+	<canvas id="game-surface" class="fill-window"></canvas>
+	<script type="module">
+		const searchParams = new URLSearchParams(window.location.search);
+
+		const routes = {
+			"ik_test": () => import("./tests/ikTest.ts"),
+			"physics_test": () => import("./game/main.ts"),
+			"renderer2D_test": () => import("./tests/renderer2DTest.ts"),
+			"dynamic_geometry_test": () => import("./tests/dynamicGeometryTest.ts"),
+			"static_geometry_test": () => import("./tests/staticGeometryTest.ts"),
+		}
+
+		const route = searchParams.keys().next().value || "";
+		if (routes[route]) {
+			routes[route]();
+		} else {
+			document.body.innerHTML = `
+				<ul>
+					${Object.keys(routes).map(route => 
+						`<li style="padding-bottom: .5rem;"><a href="?${route}">${route}</a></li>`
+					).join("")}
+				</ul>
+			`;
+		}
+
+		import { Vector3 } from "./open-utilities/maths/Vector3.ts";
+		Object.assign(globalThis, { Vector3 });
+	</script>
+	<div id="debug-text" class="fill-window"></div>
+	<style>
+		* {
+			position: relative;
+			padding: 0;
+			margin: 0;
+			box-sizing: border-box;
+		}
+
+		html, body {
+			inset: 0;
+			width: 100%;
+			height: 100%;
+		}
+
+		.fill-window {
+			position: absolute;
+			inset: 0;
+			width: 100%;
+			height: 100%;
+
+			overflow: hidden;
+		}
+
+		#game-surface {
+			background: transparent;
+			border: none;
+
+		}
+
+		#debug-text {
+			font-family: monospace;
+			padding: .5rem;
+			white-space: pre;
+			pointer-events: none;
+
+			text-overflow: ellipsis;
+		}
+
+		canvas, #debug-text {
+			user-select: none;
+			-webkit-user-select: none;
+			touch-action: none;
+		}
+	</style>
+</body>
+</html>
