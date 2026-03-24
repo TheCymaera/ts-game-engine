@@ -1,10 +1,9 @@
 import { Random } from "../maths/Random.js";
 import { Quaternion } from "../maths/Quaternion.js";
 import { Vector3 } from "../maths/Vector3.js";
-import { IKHingeConstraint3D, IKSwingTwistConstraint3D, type IKChain3D, type IKConstraint3D } from "./IKChain3D.js";
+import { IKChain3D, IKHingeConstraint3D, IKSwingTwistConstraint3D, type IKConstraint3D } from "./IKChain3D.js";
 
 const EPSILON = 0.000001;
-const LOCAL_FORWARD = Vector3.new(0, 1, 0);
 
 interface IKChainPose3D {
 	segmentDirections: Vector3[];
@@ -19,7 +18,6 @@ export interface RandomizedSolverOptions {
 
 	tolerance?: number;
 	attempts?: number;
-	includeCurrentPose?: boolean;
 	random?: Random;
 }
 
@@ -36,7 +34,6 @@ export interface RandomizedSolverResult {
 export function solveRandomizedIK3D(chain: IKChain3D, options: RandomizedSolverOptions): RandomizedSolverResult {
 	const baselinePose = capturePose(chain);
 	const totalAttempts = Math.max(1, Math.floor(options.attempts ?? 8));
-	const includeCurrentPose = options.includeCurrentPose ?? true;
 	const random = options.random ?? Random.default;
 
 	let bestPose = baselinePose;
@@ -49,7 +46,7 @@ export function solveRandomizedIK3D(chain: IKChain3D, options: RandomizedSolverO
 	let tolerance = options.tolerance ?? 0.001;
 
 	for (let attempt = 0; attempt < totalAttempts; attempt++) {
-		if (includeCurrentPose && attempt === 0) {
+		if (attempt === 0) {
 			applyPose(chain, baselinePose);
 		} else {
 			applyRandomPose(chain, random);
@@ -106,59 +103,26 @@ function applyRandomPose(chain: IKChain3D, random: Random) {
 		const segment = chain.segments[index]!;
 		const joint = chain.jointPositions[index]!;
 		const parentRotation = index === 0 ? chain.rootRotation : chain.segments[index - 1]!.rotation;
-		const sample = sampleConstraintPose(segment.constraint, parentRotation, random);
 
-		segment.direction.copy(sample.direction);
-		segment.rotation.copy(sample.rotation);
-		chain.jointPositions[index + 1]!.copy(joint.clone().add(sample.direction.clone().multiply(segment.length)));
+		//const maxDelta = .3;
+		//const rotationDelta = parentRotation.clone().multiply(Quaternion.fromEuler(
+		//	random.nextFloat(-maxDelta, maxDelta),
+		//	random.nextFloat(-maxDelta, maxDelta),
+		//	random.nextFloat(-maxDelta, maxDelta),
+		//)).normalize() ?? Quaternion.identity();
+
+		//const rotation = rotationDelta.multiply(segment.rotation).normalize() ?? segment.rotation.clone();
+
+		const rotation = Quaternion.fromEuler(
+			random.nextFloat(-Math.PI, Math.PI),
+			random.nextFloat(-Math.PI, Math.PI),
+			random.nextFloat(-Math.PI, Math.PI),
+		).multiply(parentRotation).normalize() ?? parentRotation.clone();
+
+		const direction = rotation.rotateVector(IKChain3D.FORWARD);
+
+		chain.jointPositions[index + 1]!.copy(joint.clone().add(direction.clone().multiply(segment.length)));
 	}
-}
-
-function sampleConstraintPose(constraint: IKConstraint3D, parentRotation: Quaternion, random: Random) {
-	if (constraint instanceof IKSwingTwistConstraint3D) {
-		return sampleSwingTwistPose(constraint, parentRotation, random);
-	}
-
-	if (constraint instanceof IKHingeConstraint3D) {
-		return sampleHingePose(constraint, parentRotation, random);
-	}
-
-	throw new Error("Unknown IK constraint.");
-}
-
-function sampleSwingTwistPose(constraint: IKSwingTwistConstraint3D, parentRotation: Quaternion, random: Random) {
-	const twist = random.nextFloat(constraint.minTwist, constraint.maxTwist);
-	const localDirection = sampleConeDirection(constraint.maxSwing, random);
-	const swingRotation = Quaternion.fromTo(LOCAL_FORWARD, localDirection, constraint.twistOrigin);
-	const twistRotation = Quaternion.fromAxisAngle(LOCAL_FORWARD, twist);
-	const localRotation = swingRotation.multiply(twistRotation).normalize() ?? swingRotation;
-	const rotation = parentRotation.clone().multiply(localRotation).normalize() ?? parentRotation.clone();
-	const direction = rotation.rotateVector(LOCAL_FORWARD);
-	return { direction, rotation };
-}
-
-function sampleHingePose(constraint: IKHingeConstraint3D, parentRotation: Quaternion, random: Random) {
-	const angle = random.nextFloat(constraint.minAngle, constraint.maxAngle);
-	const localRotation = Quaternion.fromAxisAngle(constraint.axis, angle);
-	const rotation = parentRotation.clone().multiply(localRotation).normalize() ?? parentRotation.clone();
-	const direction = rotation.rotateVector(constraint.origin.clone());
-	return { direction, rotation };
-}
-
-function sampleConeDirection(maxSwing: number, random: Random) {
-	if (maxSwing <= EPSILON) {
-		return LOCAL_FORWARD.clone();
-	}
-
-	const azimuth = random.nextFloat(0, Math.PI * 2);
-	const cosine = random.nextFloat(Math.cos(maxSwing), 1);
-	const sine = Math.sqrt(Math.max(0, 1 - cosine * cosine));
-
-	return Vector3.new(
-		sine * Math.cos(azimuth),
-		cosine,
-		sine * Math.sin(azimuth),
-	);
 }
 
 function getError(chain: IKChain3D, options: { target: Vector3; targetOrientation?: Quaternion }) {
@@ -174,7 +138,7 @@ function getPositionError(chain: IKChain3D, target: Vector3) {
 
 function getOrientationError(chain: IKChain3D, targetOrientation?: Quaternion) {
 	if (!targetOrientation) {
-		return Number.POSITIVE_INFINITY;
+		return Number.NEGATIVE_INFINITY;
 	}
 
 	const endEffectorRotation = chain.segments[chain.segments.length - 1]!.rotation;
@@ -194,10 +158,6 @@ function isBetterResult(error: SolverError, bestError: SolverError) {
 	}
 
 	if (error.position > bestError.position + EPSILON) {
-		return false;
-	}
-
-	if (!Number.isFinite(error.orientation)) {
 		return false;
 	}
 

@@ -227,6 +227,26 @@ export class Quaternion {
 		const correctedUp = rightAxis.clone().cross(forwardAxis).normalize() ?? orthogonal(forwardAxis);
 		return Quaternion.fromBasis(rightAxis, forwardAxis, correctedUp);
 	}
+
+	static fromEuler(pitch: number, yaw: number, roll: number) {
+		const halfPitch = pitch * 0.5;
+		const halfYaw = yaw * 0.5;
+		const halfRoll = roll * 0.5;
+
+		const sinPitch = Math.sin(halfPitch);
+		const cosPitch = Math.cos(halfPitch);
+		const sinYaw = Math.sin(halfYaw);
+		const cosYaw = Math.cos(halfYaw);
+		const sinRoll = Math.sin(halfRoll);
+		const cosRoll = Math.cos(halfRoll);
+
+		return Quaternion.new(
+			cosYaw * sinPitch * cosRoll + sinYaw * cosPitch * sinRoll,
+			sinYaw * cosPitch * cosRoll - cosYaw * sinPitch * sinRoll,
+			cosYaw * cosPitch * sinRoll - sinYaw * sinPitch * cosRoll,
+			cosYaw * cosPitch * cosRoll + sinYaw * sinPitch * sinRoll,
+		).normalize() ?? Quaternion.identity();
+	}
 }
 
 function rejectFromAxis(vector: Vector3, axis: Vector3) {

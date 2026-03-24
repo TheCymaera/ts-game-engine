@@ -1,28 +1,13 @@
 import { Duration } from "@open-utilities/core/Duration";
-import { coerceBetween } from "@open-utilities/maths/coerceBetween";
-import { IKChain3D, IKChainSegment3D, IKHingeConstraint3D, IKSwingTwistConstraint3D, type IKConstraint3D } from "@open-utilities/inverse-kinematics/IKChain3D";
+import { IKChain3D, IKChainSegment3D, IKHingeConstraint3D, IKSwingTwistConstraint3D } from "@open-utilities/inverse-kinematics/IKChain3D";
 import { Matrix4 } from "@open-utilities/maths/Matrix4";
 import { Quaternion } from "@open-utilities/maths/Quaternion";
 import { Random } from "@open-utilities/maths/Random";
 import { Vector3 } from "@open-utilities/maths/Vector3";
 import { AnimationFrameScheduler } from "@open-utilities/rendering/AnimationFrameScheduler";
 import { Color } from "@open-utilities/rendering/Color";
-import {
-	BufferBuilder,
-	Geometry,
-	GeometryUsage,
-	Material,
-	Mesh,
-	RenderPrimitiveType,
-	RenderUniformFloat,
-	RenderUniformInt,
-	ShaderModule,
-	VertexAttributeKind,
-	VertexAttributeLayout,
-	VertexAttributeType,
-	WebGLRenderer,
-} from "@open-utilities/rendering/WebGLRenderer";
-import { solveRandomizedIK3D as solveRandomized3D } from "@open-utilities/inverse-kinematics/solveRandomizedFabrik3D";
+import { BufferBuilder, Geometry, GeometryUsage, Material, Mesh, RenderPrimitiveType, RenderUniformFloat, RenderUniformInt, ShaderModule, VertexAttributeKind, VertexAttributeLayout, VertexAttributeType, WebGLRenderer } from "@open-utilities/rendering/WebGLRenderer";
+import { solveRandomizedIK3D as solveRandomized3D } from "@open-utilities/inverse-kinematics/solveRandomizedIK3D";
 import { extractTwistRadians, solveFabrik3D } from "@open-utilities/inverse-kinematics/solveFabrik3D";
 import { dedent } from "@open-utilities/string/dedent";
 
@@ -220,22 +205,28 @@ AnimationFrameScheduler.periodic(({ elapsedTime }) => {
 	}
 
 	const smoothing = 1 - Math.exp(-elapsedTime.seconds * 1.5);
-	currentTargetOffset = slerpOffset(currentTargetOffset, desiredTargetOffset, smoothing);
+	currentTargetOffset = currentTargetOffset.lerp(desiredTargetOffset, smoothing);
 	const target = rootPosition.clone().add(currentTargetOffset);
 	
+	const tolerance = 0.01;
 	const solvedChain = chain.clone();
 	solveRandomized3D(solvedChain, {
 		target,
 		targetOrientation,
 		attempts: 6,
+		tolerance,
 		solver: (chain) => solveFabrik3D(chain, { target, targetOrientation }),
 	});
 	
 	const lerp = 1; //1 - Math.exp(-elapsedTime.seconds * 3);
 	chain.lerp(solvedChain, lerp);
+
+
+	const effector = chain.jointPositions[chain.jointPositions.length - 1]!;
+	const error = effector.distanceTo(target);
 	
 	updateChainMeshes(chain);
-	updateTargetMesh(target, targetOrientation);
+	updateTargetMesh(target, targetOrientation, error <= tolerance);
 	orbitAngle += elapsedTime.seconds * 0.22;
 
 	renderer.setViewTransform(Matrix4.lookAt({
@@ -253,11 +244,10 @@ AnimationFrameScheduler.periodic(({ elapsedTime }) => {
 	renderer.drawMesh(jointMesh);
 	renderer.drawMesh(targetPointMesh);
 
-	const effector = chain.jointPositions[chain.jointPositions.length - 1]!;
 	debugText.textContent = dedent`
 		target: ${target.toString()}
 		effector: ${effector.toString()}
-		error: ${effector.distanceTo(target).toFixed(4)}
+		error: ${error.toFixed(4)}
 		retarget in: ${Math.max(retargetTimer.seconds, 0).toFixed(2)}s
 	`;
 });
@@ -326,8 +316,8 @@ function updateChainMeshes(chain: IKChain3D) {
 	constraintGuideMesh.geometry.setIndexData(incrementingIndices(constraintGuides.builder.length / layout.stride));
 }
 
-function updateTargetMesh(target: Vector3, targetOrientation: Quaternion | undefined) {
-	const TARGET_COLOR = Color.red;
+function updateTargetMesh(target: Vector3, targetOrientation: Quaternion | undefined, reached: boolean) {
+	const TARGET_COLOR = reached ? Color.green : Color.red;
 	const X_COLOR = Color.red.scaleAlpha(0.5);
 	const Y_COLOR = Color.green.scaleAlpha(0.5);
 	const Z_COLOR = Color.blue.scaleAlpha(0.5);
@@ -355,9 +345,9 @@ function updateTargetMesh(target: Vector3, targetOrientation: Quaternion | undef
 }
 
 function buildJointAxes(jointPositions: Vector3[]) {
-	const RIGHT_COLOR = Color.fromRGBA(255, 104, 104, 170);
-	const FORWARD_COLOR = Color.fromRGBA(255, 196, 82, 190);
-	const UP_COLOR = Color.fromRGBA(116, 182, 255, 170);
+	const X_COLOR = Color.fromRGBA(255, 104, 104, 170);
+	const Y_COLOR = Color.fromRGBA(255, 196, 82, 190);
+	const Z_COLOR = Color.fromRGBA(116, 182, 255, 170);
 	
 	const builder = new VertexBuilder();
 
@@ -365,16 +355,16 @@ function buildJointAxes(jointPositions: Vector3[]) {
 		const position = jointPositions[index]!;
 		const rotation = jointRotationAt(index);
 		const scale = index === jointPositions.length - 1 ? 0.26 : 0.34;
-		const right = rotation.rotateVector(Vector3.new(1, 0, 0)).multiply(scale);
-		const forward = rotation.rotateVector(Vector3.new(0, 1, 0)).multiply(scale * 1.1);
-		const up = rotation.rotateVector(Vector3.new(0, 0, 1)).multiply(scale);
+		const worldX = rotation.rotateVector(Vector3.new(1, 0, 0)).multiply(scale);
+		const worldY = rotation.rotateVector(Vector3.new(0, 1, 0)).multiply(scale * 1.1);
+		const worldZ = rotation.rotateVector(Vector3.new(0, 0, 1)).multiply(scale);
 
-		builder.append(position, RIGHT_COLOR);
-		builder.append(position.clone().add(right), RIGHT_COLOR);
-		builder.append(position, FORWARD_COLOR);
-		builder.append(position.clone().add(forward), FORWARD_COLOR);
-		builder.append(position, UP_COLOR);
-		builder.append(position.clone().add(up), UP_COLOR);
+		builder.append(position, X_COLOR);
+		builder.append(position.clone().add(worldX), X_COLOR);
+		builder.append(position, Y_COLOR);
+		builder.append(position.clone().add(worldY), Y_COLOR);
+		builder.append(position, Z_COLOR);
+		builder.append(position.clone().add(worldZ), Z_COLOR);
 	}
 
 	return builder;
@@ -410,6 +400,7 @@ function buildConstraintGuides(jointPositions: Vector3[]) {
 					segment.constraint.maxAngle,
 					parentRotation,
 					segment.constraint.axis,
+					segment.constraint.origin,
 				).build()
 			);
 		}
@@ -471,8 +462,8 @@ function buildSwingTwistGuide(
 function buildCone(position: Vector3, length: number, radians: number, rotation: Quaternion) {
 	const color = Color.fromRGBA(84, 232, 201, 95);
 
-	const forward = Vector3.new(0, 1, 0).rotate(rotation);
-	const up = Vector3.new(0, 0, 1).rotate(rotation);
+	const forward = IKChain3D.FORWARD.rotate(rotation);
+	const up = forward.clone().orthogonal().normalize()!;
 	const right = forward.clone().cross(up).normalize()!;
 
 	const rimRadius = Math.sin(radians) * length;
@@ -511,11 +502,12 @@ function buildHingeGuide(
 	maxAngleRadians: number,
 	parentRotation: Quaternion,
 	axisLocal: Vector3,
+	originLocal: Vector3,
 ) {
 	const arcColor = Color.fromRGBA(121, 184, 255, 130);
 	
-	const axisWorld = parentRotation.rotateVector(axisLocal).normalize() ?? Vector3.new(1, 0, 0);
-	const referenceWorld = parentRotation.rotateVector(Vector3.new(0, 1, 0)).normalize() ?? orthogonal(axisWorld);
+	const axisWorld = parentRotation.rotateVector(axisLocal).normalize()!;
+	const referenceWorld = parentRotation.rotateVector(originLocal).normalize()!;
 	const radius = length * 0.3;
 
 	const builder = new VertexBuilder();
@@ -557,36 +549,6 @@ function randomVectorInRadius(radius: number) {
 	).multiply(length);
 }
 
-function slerpOffset(current: Vector3, desired: Vector3, amount: number) {
-	const currentLength = current.length();
-	const desiredLength = desired.length();
-	const currentDirection = current.clone().normalize() ?? Vector3.new(0, 1, 0);
-	const desiredDirection = desired.clone().normalize() ?? Vector3.new(0, 1, 0);
-	const direction = slerpDirection(currentDirection, desiredDirection, amount);
-	return direction.multiply(currentLength + (desiredLength - currentLength) * amount);
-}
-
-function slerpDirection(from: Vector3, to: Vector3, amount: number) {
-	const start = from.clone().normalize() ?? Vector3.new(0, 1, 0);
-	const end = to.clone().normalize() ?? start.clone();
-	const cosine = coerceBetween(start.dot(end), -1, 1);
-
-	if (cosine > 0.9995) {
-		return start.lerp(end, amount) ?? end;
-	}
-
-	if (cosine < -0.9995) {
-		const axis = orthogonal(start);
-		return start.rotateAround(axis, Math.PI * amount).normalize() ?? end;
-	}
-
-	const angle = Math.acos(cosine);
-	const sine = Math.sin(angle);
-	const startWeight = Math.sin((1 - amount) * angle) / sine;
-	const endWeight = Math.sin(amount * angle) / sine;
-	return start.multiply(startWeight).add(end.multiply(endWeight)).normalize() ?? end;
-}
-
 function createGridMesh(material: Material, y: number, extent: number, step: number) {
 	const vertexCount = ((extent * 2) / step + 1) * 4;
 
@@ -617,9 +579,4 @@ function incrementingIndices(pointCount: number) {
 		indices[index] = index;
 	}
 	return indices;
-}
-
-function orthogonal(direction: Vector3) {
-	const axis = Math.abs(direction.x) < 0.5 ? Vector3.new(1, 0, 0) : Vector3.new(0, 1, 0);
-	return direction.clone().cross(axis);
 }

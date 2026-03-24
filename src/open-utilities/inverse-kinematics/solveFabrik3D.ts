@@ -2,10 +2,9 @@ import { assertNever } from "@open-utilities/types/assertNever.js";
 import { coerceBetween } from "../maths/coerceBetween.js";
 import { Quaternion } from "../maths/Quaternion.js";
 import { Vector3 } from "../maths/Vector3.js";
-import { IKHingeConstraint3D, IKSwingTwistConstraint3D, type IKChain3D, type IKConstraint3D } from "./IKChain3D.js";
+import { IKChain3D, IKHingeConstraint3D, IKSwingTwistConstraint3D, type IKConstraint3D } from "./IKChain3D.js";
 
 const EPSILON = 0.000001;
-const LOCAL_FORWARD = Vector3.new(0, 1, 0);
 
 export interface FABRIKSolverOptions {
 	target: Vector3;
@@ -128,18 +127,18 @@ function constrainSwingTwist(
 	desiredRotation?: Quaternion,
 ) {
 	// clamp to cone
-	const coneDirection = parentRotation.rotateVector(LOCAL_FORWARD);
+	const coneDirection = parentRotation.rotateVector(IKChain3D.FORWARD);
 	const direction = clampDirectionToCone(targetDirection, coneDirection, constraint.maxSwing);
-	const localRotation = Quaternion.fromTo(LOCAL_FORWARD, parentRotation.clone().invert()!.rotateVector(direction));
+	const localRotation = Quaternion.fromTo(IKChain3D.FORWARD, parentRotation.clone().invert()!.rotateVector(direction));
 
 	// derive twist from the desired end-effector orientation when one is provided.
 	let twist = desiredRotation
-		? extractDrivenTwistRadians(desiredRotation, parentRotation, localRotation, constraint.twistOrigin, LOCAL_FORWARD)
-		: extractTwistRadians(currentRotation, parentRotation, localRotation, constraint.twistOrigin, LOCAL_FORWARD);
+		? extractDrivenTwistRadians(desiredRotation, parentRotation, localRotation, constraint.twistOrigin, IKChain3D.FORWARD)
+		: extractTwistRadians(currentRotation, parentRotation, localRotation, constraint.twistOrigin, IKChain3D.FORWARD);
 	twist = coerceBetween(twist, constraint.minTwist, constraint.maxTwist);
 
 	// apply twist
-	const twistRotation = Quaternion.fromAxisAngle(LOCAL_FORWARD, twist);
+	const twistRotation = Quaternion.fromAxisAngle(IKChain3D.FORWARD, twist);
 	localRotation.multiply(twistRotation).normalize()!;
 
 	// get final rotation

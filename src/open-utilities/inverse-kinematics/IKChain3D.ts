@@ -61,6 +61,8 @@ export interface IKChainSegment3D {
 
 export class IKChain3D {
 
+	static get FORWARD() { return Vector3.new(0, 1, 0); }
+
 	constructor(
 		readonly rootPosition: Vector3,
 		readonly rootRotation: Quaternion,
