@@ -52,15 +52,16 @@ export class WebGLRenderer {
 
 		// apply geometry
 		const geometryBuffer = this.#getGeometryBuffers(mesh.geometry);
-		this.#updateGeometryBuffers(mesh.geometry, geometryBuffer);
+		this.#syncBuffer(mesh.geometry.vertices, geometryBuffer.vertexBuffer, this.gl.ARRAY_BUFFER);
+		this.#syncBuffer(mesh.geometry.indices, geometryBuffer.indexBuffer, this.gl.ELEMENT_ARRAY_BUFFER);
 		this.#validateProgramAttributeLayout(program, mesh.geometry.attributeLayout);
 		this.gl.bindVertexArray(geometryBuffer.vao);
 
 		// draw
 		this.gl.drawElements(
 			glRenderPrimitiveType(mesh.geometry.primitiveType),
-			mesh.geometry.indexData.length,
-			glIndexType(mesh.geometry.indexData),
+			mesh.geometry.indices.buffer.length,
+			glIndexType(mesh.geometry.indices.buffer),
 			0
 		);
 		this.gl.bindVertexArray(null);
@@ -88,26 +89,18 @@ export class WebGLRenderer {
 
 	#getGeometryBuffers(geometry: Geometry) {
 		return this.#cache.geometryBuffers.getOrInsertComputed(geometry, ()=> {
-			geometry.needsVertexUpdate = false;
-			geometry.needsIndexUpdate = false;
+			geometry.vertices.isDirty = false;
+			geometry.indices.isDirty = false;
 			return createGeometryBuffers(this.gl, geometry)
 		});
 	}
 
-	#updateGeometryBuffers(geometry: Geometry, buffers: WebGLGeometryBuffers) {
-		if (geometry.needsVertexUpdate) {
-			this.gl.bindBuffer(this.gl.ARRAY_BUFFER, buffers.vertexBuffer);
-			this.gl.bufferData(this.gl.ARRAY_BUFFER, geometry.vertexData, glGeometryUsage(geometry.vertexUsage));
-			this.gl.bindBuffer(this.gl.ARRAY_BUFFER, null);
-			geometry.needsVertexUpdate = false;
-		}
-
-		if (geometry.needsIndexUpdate) {
-			this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, buffers.indexBuffer);
-			this.gl.bufferData(this.gl.ELEMENT_ARRAY_BUFFER, geometry.indexData, glGeometryUsage(geometry.indexUsage));
-			this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, null);
-			geometry.needsIndexUpdate = false;
-		}
+	#syncBuffer(buffer: ShaderBuffer, glBuffer: WebGLBuffer, kind: GLenum) {
+		if (!buffer.isDirty) return;
+		this.gl.bindBuffer(kind, glBuffer);
+		this.gl.bufferData(kind, buffer.buffer, glGeometryUsage(buffer.usage));
+		this.gl.bindBuffer(kind, null);
+		buffer.isDirty = false;
 	}
 
 	#validatedAttributeLayouts = new Map<WebGLProgram, WeakSet<VertexAttributeLayout>>();
@@ -236,7 +229,18 @@ export enum VertexAttributeKind {
 	Integer,
 }
 
-export type IndexBufferData = Uint16Array | Uint32Array;
+//export type IndexBufferData = Uint16Array | Uint32Array;
+
+export class ShaderBuffer<T extends AllowSharedBufferSource = AllowSharedBufferSource> {
+	isDirty = true;
+	constructor(readonly buffer: T, readonly usage: GeometryUsage) {}
+
+	set(newBuffer: T) {
+		// @ts-expect-error Privately mutable
+		this.buffer = newBuffer;
+		this.isDirty = true;
+	}
+}
 
 export enum GeometryUsage {
 	Static, Dynamic, Stream,
@@ -244,42 +248,21 @@ export enum GeometryUsage {
 
 export class Geometry {
 	readonly attributeLayout: VertexAttributeLayout;
-	readonly vertexData: AllowSharedBufferSource;
-	readonly indexData: IndexBufferData;
+	readonly vertices: ShaderBuffer;
+	readonly indices: ShaderBuffer<IndexBufferData>;
 	readonly primitiveType: RenderPrimitiveType;
-	readonly vertexUsage: GeometryUsage;
-	readonly indexUsage: GeometryUsage;
-
-	needsVertexUpdate = false;
-	needsIndexUpdate = false;
 
 	constructor(options: {
 		attributeLayout: VertexAttributeLayout,
-		vertexData: AllowSharedBufferSource,
-		indexData: IndexBufferData,
+		vertices: ShaderBuffer,
+		indices: ShaderBuffer<IndexBufferData>,
 		primitiveType?: RenderPrimitiveType,
-		vertexUsage?: GeometryUsage,
-		indexUsage?: GeometryUsage,
-		bounds?: Rect,
 	}) {
 		this.attributeLayout = options.attributeLayout;
-		this.vertexData = options.vertexData;
-		this.indexData = options.indexData;
+		this.vertices = options.vertices;
+		this.indices = options.indices;
+
 		this.primitiveType = options.primitiveType ?? RenderPrimitiveType.Triangles;
-		this.vertexUsage = options.vertexUsage ?? GeometryUsage.Static;
-		this.indexUsage = options.indexUsage ?? GeometryUsage.Static;
-	}
-
-	setVertexData(vertexData: AllowSharedBufferSource) {
-		// @ts-expect-error Privately mutable
-		this.vertexData = vertexData;
-		this.needsVertexUpdate = true;
-	}
-
-	setIndexData(indexData: IndexBufferData) {
-		// @ts-expect-error Privately mutable
-		this.indexData = indexData;
-		this.needsIndexUpdate = true;
 	}
 }
 
@@ -408,6 +391,8 @@ function ensureUniformsNotReserved(uniforms: UniformList) {
 	}
 }
 
+type IndexBufferData = Uint16Array | Uint32Array;
+
 
 function compileShader(
 	gl: WebGL2RenderingContext,
@@ -465,12 +450,12 @@ function createGeometryBuffers(
 	const vbo = gl.createBuffer();
 	if (!vbo) throw new Error("Failed to create VBO.");
 	gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
-	gl.bufferData(gl.ARRAY_BUFFER, geometry.vertexData, glGeometryUsage(geometry.vertexUsage));
+	gl.bufferData(gl.ARRAY_BUFFER, geometry.vertices.buffer, glGeometryUsage(geometry.vertices.usage));
 
 	const ibo = gl.createBuffer();
 	if (!ibo) throw new Error("Failed to create IBO.");
 	gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
-	gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, geometry.indexData, glGeometryUsage(geometry.indexUsage));
+	gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, geometry.indices.buffer, glGeometryUsage(geometry.indices.usage));
 	gl.bindBuffer(gl.ARRAY_BUFFER, null);
 	gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
 

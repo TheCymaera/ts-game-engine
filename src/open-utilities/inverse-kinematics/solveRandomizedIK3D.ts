@@ -10,14 +10,19 @@ export interface RandomizedSolverOptions {
 	solver: IKSolver3D;
 	tolerance: number;
 	attempts: number;
-	random: Random;
+	includeOriginalPose: boolean;
+	random?: Random;
 }
 
 export function createRandomizedIKSolver3D(options: RandomizedSolverOptions): IKSolver3D {
-	return (chain: IKChain3D, target: IKTarget3D) => solveRandomizedIK3D(chain, target, options);
+	const resolved = {
+		random: Random.mulberry32(0),
+		...options,
+	}
+	return (chain: IKChain3D, target: IKTarget3D) => solveRandomizedIK3D(chain, target, resolved);
 }
 
-function solveRandomizedIK3D(chain: IKChain3D, target: IKTarget3D, options: RandomizedSolverOptions) {
+function solveRandomizedIK3D(chain: IKChain3D, target: IKTarget3D, options: Required<RandomizedSolverOptions>) {
 	const baselinePose = capturePose(chain);
 
 	let bestPose = baselinePose;
@@ -30,7 +35,7 @@ function solveRandomizedIK3D(chain: IKChain3D, target: IKTarget3D, options: Rand
 	let tolerance = options.tolerance ?? 0.001;
 
 	for (let attempt = 0; attempt < options.attempts; attempt++) {
-		if (attempt === 0) {
+		if (attempt === 0 && options.includeOriginalPose) {
 			applyPose(chain, baselinePose);
 		} else {
 			applyRandomPose(chain, options.random);

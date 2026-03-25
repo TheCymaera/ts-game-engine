@@ -4,7 +4,7 @@ import { denormalize } from "@open-utilities/maths/denormalize";
 import { Rect } from "@open-utilities/maths/Rect";
 import { Vector2 } from "@open-utilities/maths/Vector2";
 import { AnimationFrameScheduler } from "@open-utilities/rendering/AnimationFrameScheduler";
-import { VertexAttributeLayout, VertexAttributeType, VertexAttributeKind, BufferBuilder, Geometry, Material, Mesh, RenderPrimitiveType, ShaderModule, ShaderUniformFloat, ShaderUniformInt, WebGLRenderer, ShaderUniform as ShaderUniform } from "@open-utilities/rendering/WebGLRenderer";
+import { VertexAttributeLayout, VertexAttributeType, VertexAttributeKind, BufferBuilder, Geometry, Material, Mesh, RenderPrimitiveType, ShaderModule, ShaderUniformFloat, ShaderUniformInt, WebGLRenderer, ShaderUniform as ShaderUniform, GeometryUsage, ShaderBuffer } from "@open-utilities/rendering/WebGLRenderer";
 
 
 const canvas = document.querySelector("canvas")!;
@@ -24,16 +24,16 @@ const geometry = new Geometry({
 	attributeLayout: new VertexAttributeLayout()
 		.append("aPosition", 2, VertexAttributeType.Float32)
 		.append("aColor", 4, VertexAttributeType.Uint8, { normalized: true, kind: VertexAttributeKind.Float }),
-	vertexData: new BufferBuilder()
+	vertices: new ShaderBuffer(new BufferBuilder()
 		.appendFloat32(-0.5, -0.5).appendUint8(255, 0, 0, 255)
 		.appendFloat32(0.5, -0.5).appendUint8(0, 255, 0, 255)
 		.appendFloat32(0.5,  0.5).appendUint8(0, 0, 255, 255)
 		.appendFloat32(-0.5,  0.5).appendUint8(255, 255, 0, 255)
-		.build(),
-	indexData: new Uint16Array([
+		.build(), GeometryUsage.Static),
+	indices: new ShaderBuffer(new Uint16Array([
 		0, 1, 2,
 		2, 3, 0,
-	]),
+	]), GeometryUsage.Static),
 	primitiveType: RenderPrimitiveType.Triangles,
 });
 

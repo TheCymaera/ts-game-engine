@@ -10,7 +10,7 @@ import { Random } from "@open-utilities/maths/Random";
 import { Vector3 } from "@open-utilities/maths/Vector3";
 import { AnimationFrameScheduler } from "@open-utilities/rendering/AnimationFrameScheduler";
 import { Color } from "@open-utilities/rendering/Color";
-import { BufferBuilder, Geometry, GeometryUsage, Material, Mesh, RenderPrimitiveType, ShaderUniformFloat, ShaderUniformInt, ShaderModule, VertexAttributeKind, VertexAttributeLayout, VertexAttributeType, WebGLRenderer } from "@open-utilities/rendering/WebGLRenderer";
+import { BufferBuilder, Geometry, GeometryUsage, Material, Mesh, RenderPrimitiveType, ShaderUniformFloat, ShaderUniformInt, ShaderModule, VertexAttributeKind, VertexAttributeLayout, VertexAttributeType, WebGLRenderer, ShaderBuffer } from "@open-utilities/rendering/WebGLRenderer";
 import { dedent } from "@open-utilities/string/dedent";
 
 const canvas = document.querySelector("canvas")!;
@@ -107,19 +107,15 @@ const targetMaterial = new Material({
 });
 
 
-function createMesh(options: {
+function createEmptyMesh(options: {
 	primitiveType: RenderPrimitiveType;
-	vertexCount: number;
-	indices: Uint16Array;
 	material: Material;
 }) {
 	const geometry = new Geometry({
 		attributeLayout: layout,
-		vertexData: new ArrayBuffer(options.vertexCount * layout.stride),
-		indexData: options.indices,
+		vertices: new ShaderBuffer(new ArrayBuffer(0), GeometryUsage.Dynamic),
+		indices: new ShaderBuffer(new Uint16Array(0), GeometryUsage.Dynamic),
 		primitiveType: options.primitiveType,
-		vertexUsage: GeometryUsage.Dynamic,
-		indexUsage: GeometryUsage.Static,
 	});
 
 	return new Mesh({ geometry, material: options.material });
@@ -145,22 +141,16 @@ class VertexBuilder {
 }
 
 const gridMesh = createGridMesh(lineMaterial, rootPosition.y - 1.7, 6, 0.5);
-const lineMesh = createMesh({
+const lineMesh = createEmptyMesh({
 	primitiveType: RenderPrimitiveType.Lines,
-	vertexCount: 0,
-	indices: incrementingIndices(0),
 	material: lineMaterial,
 });
-const jointMesh = createMesh({
+const jointMesh = createEmptyMesh({
 	primitiveType: RenderPrimitiveType.Points,
-	vertexCount: 0,
-	indices: incrementingIndices(0),
 	material: jointMaterial,
 });
-const targetMesh = createMesh({
+const targetMesh = createEmptyMesh({
 	primitiveType: RenderPrimitiveType.Points,
-	vertexCount: 0,
-	indices: incrementingIndices(0),
 	material: targetMaterial,
 });
 
@@ -184,9 +174,10 @@ const solver = createRandomizedIKSolver3D({
 		iterations: 8,
 	}),
 	tolerance: 0.01,
-	attempts: 6,
+	attempts: 1,
 	//attempts: 1,
-	random,
+	includeOriginalPose: true,
+	random: Random.mulberry32(0)
 });
 
 
@@ -199,15 +190,19 @@ AnimationFrameScheduler.periodic(({ elapsedTime }) => {
 		retargetTimer = RETARGET_INTERVAL();
 	}
 
-	const targetLerp = 1 - Math.exp(-elapsedTime.seconds * 1.5);
-	currentTarget.lerp(desiredTarget, targetLerp);
+	//const targetLerp = Infinity;
+	//const chainLerp = 2.5;
+
+	const targetLerp = 1.5;
+	const chainLerp = Infinity;
+
+	currentTarget.lerp(desiredTarget, 1 - Math.exp(-elapsedTime.seconds * targetLerp));
 	
 	const tolerance = 0.01;
 	const solvedChain = chain.clone();
 	solver(solvedChain, currentTarget);
 	
-	const chainLerp = 1; //1 - Math.exp(-elapsedTime.seconds * 3);
-	chain.lerp(solvedChain, chainLerp);
+	chain.lerp(solvedChain, 1 - Math.exp(-elapsedTime.seconds * chainLerp));
 
 
 	const effector = chain.jointPositions[chain.jointPositions.length - 1]!;
@@ -325,17 +320,17 @@ function updateMeshes(chain: IKChain3D, target: IKTarget3D, targetReached: boole
 		allLines.appendBuffer(buildAxes(target.position, target.orientation, 0.5).build());
 	}
 
-	lineMesh.geometry.setVertexData(allLines.build());
-	lineMesh.geometry.setIndexData(incrementingIndices(allLines.builder.length / layout.stride));
+	lineMesh.geometry.vertices.set(allLines.build());
+	lineMesh.geometry.indices.set(incrementingIndices(allLines.builder.length / layout.stride));
 	
-	jointMesh.geometry.setVertexData(jointBuilder.build());
-	jointMesh.geometry.setIndexData(incrementingIndices(jointBuilder.builder.length / layout.stride));
+	jointMesh.geometry.vertices.set(jointBuilder.build());
+	jointMesh.geometry.indices.set(incrementingIndices(jointBuilder.builder.length / layout.stride));
 
 	const TARGET_COLOR = targetReached ? Color.green : Color.red;
 
 	const ball = new VertexBuilder().append(target.position, TARGET_COLOR);
-	targetMesh.geometry.setVertexData(ball.build());
-	targetMesh.geometry.setIndexData(incrementingIndices(ball.builder.length / layout.stride));
+	targetMesh.geometry.vertices.set(ball.build());
+	targetMesh.geometry.indices.set(incrementingIndices(ball.builder.length / layout.stride));
 }
 
 function buildConstraintGuides(jointPositions: Vector3[]) {
@@ -526,8 +521,6 @@ function randomVectorInRadius(radius: number) {
 }
 
 function createGridMesh(material: Material, y: number, extent: number, step: number) {
-	const vertexCount = ((extent * 2) / step + 1) * 4;
-
 	const builder = new VertexBuilder();
 	for (let position = -extent; position <= extent + 0.0001; position += step) {
 		const color = Math.abs(position) < 0.0001 ? Color.fromRGBHex(0x6c8cff) : Color.fromRGBA(80, 96, 124, 100);
@@ -537,14 +530,19 @@ function createGridMesh(material: Material, y: number, extent: number, step: num
 		builder.append(Vector3.new(position, y, extent), color);
 	}
 
-	const mesh = createMesh({
-		primitiveType: RenderPrimitiveType.Lines,
-		vertexCount,
-		indices: incrementingIndices(vertexCount),
+	const vertexCount = builder.builder.length / layout.stride;
+
+	const mesh = new Mesh({
 		material,
+		geometry: new Geometry({
+			attributeLayout: layout,
+			vertices: new ShaderBuffer(builder.build(), GeometryUsage.Static),
+			indices: new ShaderBuffer(incrementingIndices(vertexCount), GeometryUsage.Static),
+			primitiveType: RenderPrimitiveType.Lines,
+		}),
 	});
 
-	mesh.geometry.setVertexData(builder.build());
+	mesh.geometry.vertices.set(builder.build());
 	
 	return mesh;
 }

@@ -13,6 +13,8 @@ import {
 	VertexAttributeKind,
 	VertexAttributeType,
 	WebGLRenderer,
+	ShaderBuffer,
+	GeometryUsage,
 } from "@open-utilities/rendering/WebGLRenderer";
 
 const canvas = document.querySelector("canvas")!;
@@ -36,12 +38,7 @@ renderer.setViewTransform(Matrix4.lookAt({
 
 
 const cyan = Color.fromRGBHex(0x00ffff)
-const vertices: { position: Vector3, color: Color, normal: Vector3 }[] = [
-	//{ position: Vector3.new(-.5, 0, -.5), color: cyan, normal: Vector3.new(0,1,0) },
-	//{ position: Vector3.new( .5, 0, -.5), color: cyan, normal: Vector3.new(0,1,0) },
-	//{ position: Vector3.new( .5, 0,  .5), color: cyan, normal: Vector3.new(0,1,0) },
-	//{ position: Vector3.new(-.5, 0,  .5), color: cyan, normal: Vector3.new(0,1,0) },
-]
+const vertices: { position: Vector3, color: Color, normal: Vector3 }[] = []
 
 const indices: number[] = []
 
@@ -77,8 +74,8 @@ const vertexBuffer = new ArrayBuffer(layout.stride * vertices.length);
 const geometry = new Geometry({
 	attributeLayout: layout,
 	primitiveType: RenderPrimitiveType.Triangles,
-	vertexData: vertexBuffer,
-	indexData: new Uint16Array(indices),
+	vertices: new ShaderBuffer(vertexBuffer, GeometryUsage.Dynamic),
+	indices: new ShaderBuffer(new Uint16Array(indices), GeometryUsage.Static),
 });
 
 const shader = new ShaderModule({
@@ -137,7 +134,7 @@ AnimationFrameScheduler.periodic(() => {
 		setNormal(index, normal);
 	}
 
-	geometry.needsVertexUpdate = true;
+	geometry.vertices.isDirty = true;
 
 	renderer.clear();
 	renderer.drawMesh(mesh);
