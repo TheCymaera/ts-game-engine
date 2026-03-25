@@ -23,7 +23,7 @@ renderer.gl.clearColor(0.03, 0.04, 0.07, 1);
 const rootPosition = Vector3.new(0, 1.2, 0);
 const chain = IKChain3D.new({
 	rootPosition,
-	rotation: Quaternion.fromTo(IKChain3D.FORWARD, Vector3.new(0, 1, 0)),
+	rotation: Quaternion.fromTo(IKChain3D.IDENTITY_VECTOR, Vector3.new(0, 1, 0)),
 	segments: [
 		{ length: 0.80, joint: IKSwingTwistJoint3D.new({ twistOrigin: Vector3.new(0, 0, 1), maxSwing: 0.2 * Math.PI, minTwist: -1 * Math.PI, maxTwist: 1 * Math.PI }) },
 		{ length: 1.05, joint: IKHingeJoint3D.new({ axis: Vector3.new(1, 0, 0), origin: Vector3.new(0, 1, 0), minAngle: -0.3 * Math.PI, maxAngle: 0.3 * Math.PI }) },
@@ -440,7 +440,7 @@ function buildCircleSegment(options: {
 function buildCone(position: Vector3, length: number, radians: number, rotation: Quaternion) {
 	const color = Color.fromRGBA(84, 232, 201, 95);
 
-	const forward = IKChain3D.FORWARD.rotate(rotation);
+	const forward = IKChain3D.IDENTITY_VECTOR.rotate(rotation);
 	const up = forward.clone().orthogonal().normalize()!;
 	const right = forward.clone().cross(up).normalize()!;
 

@@ -8,80 +8,76 @@ export class Matrix4 {
 	 * Compatible with DOMMatrix:
 	 * https://developer.mozilla.org/en-US/docs/Web/API/DOMMatrix
 	 */
-	private constructor(
-		public m11: number, public m21: number, public m31: number, public m41: number,
-		public m12: number, public m22: number, public m32: number, public m42: number,
-		public m13: number, public m23: number, public m33: number, public m43: number,
-		public m14: number, public m24: number, public m34: number, public m44: number,
-	) { }
+	get m11() { return this.elements[cr(0, 0)]!; }
+	get m21() { return this.elements[cr(1, 0)]!; }
+	get m31() { return this.elements[cr(2, 0)]!; }
+	get m41() { return this.elements[cr(3, 0)]!; }
+	get m12() { return this.elements[cr(0, 1)]!; }
+	get m22() { return this.elements[cr(1, 1)]!; }
+	get m32() { return this.elements[cr(2, 1)]!; }
+	get m42() { return this.elements[cr(3, 1)]!; }
+	get m13() { return this.elements[cr(0, 2)]!; }
+	get m23() { return this.elements[cr(1, 2)]!; }
+	get m33() { return this.elements[cr(2, 2)]!; }
+	get m43() { return this.elements[cr(3, 2)]!; }
+	get m14() { return this.elements[cr(0, 3)]!; }
+	get m24() { return this.elements[cr(1, 3)]!; }
+	get m34() { return this.elements[cr(2, 3)]!; }
+	get m44() { return this.elements[cr(3, 3)]!; }
+
+	private constructor(readonly elements: number[]) {}
 
 	toFloat32Array() {
-		return new Float32Array([
-			this.m11, this.m12, this.m13, this.m14,
-			this.m21, this.m22, this.m23, this.m24,
-			this.m31, this.m32, this.m33, this.m34,
-			this.m41, this.m42, this.m43, this.m44,
-		]);
+		return new Float32Array(this.elements);
 	}
 
 	clone() {
-		return new Matrix4(
-			this.m11, this.m21, this.m31, this.m41,
-			this.m12, this.m22, this.m32, this.m42,
-			this.m13, this.m23, this.m33, this.m43,
-			this.m14, this.m24, this.m34, this.m44,
-		);
+		return new Matrix4([...this.elements]);
 	}
 
 	copy(other: Matrix4) {
-		return this.set(
-			other.m11, other.m21, other.m31, other.m41,
-			other.m12, other.m22, other.m32, other.m42,
-			other.m13, other.m23, other.m33, other.m43,
-			other.m14, other.m24, other.m34, other.m44,
-		);
+		for (let index = 0; index < this.elements.length; index++) {
+			this.elements[index] = other.elements[index]!;
+		}
+		return this;
 	}
 
 	set(
-		m11: number, m21: number, m31: number, m41: number,
-		m12: number, m22: number, m32: number, m42: number,
-		m13: number, m23: number, m33: number, m43: number,
-		m14: number, m24: number, m34: number, m44: number,
+		c0r0: number, c1r0: number, c2r0: number, c3r0: number,
+		c0r1: number, c1r1: number, c2r1: number, c3r1: number,
+		c0r2: number, c1r2: number, c2r2: number, c3r2: number,
+		c0r3: number, c1r3: number, c2r3: number, c3r3: number,
 	) {
-		this.m11 = m11; this.m21 = m21; this.m31 = m31; this.m41 = m41;
-		this.m12 = m12; this.m22 = m22; this.m32 = m32; this.m42 = m42;
-		this.m13 = m13; this.m23 = m23; this.m33 = m33; this.m43 = m43;
-		this.m14 = m14; this.m24 = m24; this.m34 = m34; this.m44 = m44;
+		const m = this.elements;
+		m[cr(0, 0)] = c0r0; m[cr(1, 0)] = c1r0; m[cr(2, 0)] = c2r0; m[cr(3, 0)] = c3r0;
+		m[cr(0, 1)] = c0r1; m[cr(1, 1)] = c1r1; m[cr(2, 1)] = c2r1; m[cr(3, 1)] = c3r1;
+		m[cr(0, 2)] = c0r2; m[cr(1, 2)] = c1r2; m[cr(2, 2)] = c2r2; m[cr(3, 2)] = c3r2;
+		m[cr(0, 3)] = c0r3; m[cr(1, 3)] = c1r3; m[cr(2, 3)] = c2r3; m[cr(3, 3)] = c3r3;
 		return this;
 	}
 
 	isEqual(other: Matrix4) {
-		return (
-			this.m11 === other.m11 && this.m21 === other.m21 && this.m31 === other.m31 && this.m41 === other.m41 &&
-			this.m12 === other.m12 && this.m22 === other.m22 && this.m32 === other.m32 && this.m42 === other.m42 &&
-			this.m13 === other.m13 && this.m23 === other.m23 && this.m33 === other.m33 && this.m43 === other.m43 &&
-			this.m14 === other.m14 && this.m24 === other.m24 && this.m34 === other.m34 && this.m44 === other.m44
-		);
+		for (let index = 0; index < this.elements.length; index++) {
+			if (this.elements[index]! !== other.elements[index]!) return false;
+		}
+
+		return true;
 	}
 
 	isApproximatelyEqual(other: Matrix4, epsilon: number = 0.0001) {
-		return (
-			Math.abs(this.m11 - other.m11) < epsilon && Math.abs(this.m21 - other.m21) < epsilon &&
-			Math.abs(this.m31 - other.m31) < epsilon && Math.abs(this.m41 - other.m41) < epsilon &&
-			Math.abs(this.m12 - other.m12) < epsilon && Math.abs(this.m22 - other.m22) < epsilon &&
-			Math.abs(this.m32 - other.m32) < epsilon && Math.abs(this.m42 - other.m42) < epsilon &&
-			Math.abs(this.m13 - other.m13) < epsilon && Math.abs(this.m23 - other.m23) < epsilon &&
-			Math.abs(this.m33 - other.m33) < epsilon && Math.abs(this.m43 - other.m43) < epsilon &&
-			Math.abs(this.m14 - other.m14) < epsilon && Math.abs(this.m24 - other.m24) < epsilon &&
-			Math.abs(this.m34 - other.m34) < epsilon && Math.abs(this.m44 - other.m44) < epsilon
-		);
+		for (let index = 0; index < this.elements.length; index++) {
+			if (Math.abs(this.elements[index]! - other.elements[index]!) >= epsilon) return false;
+		}
+
+		return true;
 	}
 
 	invert() {
-		const a00 = this.m11, a01 = this.m12, a02 = this.m13, a03 = this.m14;
-		const a10 = this.m21, a11 = this.m22, a12 = this.m23, a13 = this.m24;
-		const a20 = this.m31, a21 = this.m32, a22 = this.m33, a23 = this.m34;
-		const a30 = this.m41, a31 = this.m42, a32 = this.m43, a33 = this.m44;
+		const m = this.elements;
+		const a00 = m[cr(0, 0)]!, a01 = m[cr(0, 1)]!, a02 = m[cr(0, 2)]!, a03 = m[cr(0, 3)]!;
+		const a10 = m[cr(1, 0)]!, a11 = m[cr(1, 1)]!, a12 = m[cr(1, 2)]!, a13 = m[cr(1, 3)]!;
+		const a20 = m[cr(2, 0)]!, a21 = m[cr(2, 1)]!, a22 = m[cr(2, 2)]!, a23 = m[cr(2, 3)]!;
+		const a30 = m[cr(3, 0)]!, a31 = m[cr(3, 1)]!, a32 = m[cr(3, 2)]!, a33 = m[cr(3, 3)]!;
 
 		const b00 = a00 * a11 - a01 * a10;
 		const b01 = a00 * a12 - a02 * a10;
@@ -152,99 +148,49 @@ export class Matrix4 {
 	}
 
 	translate(translation: Vector3) {
-		this.m41 += this.m11 * translation.x + this.m21 * translation.y + this.m31 * translation.z;
-		this.m42 += this.m12 * translation.x + this.m22 * translation.y + this.m32 * translation.z;
-		this.m43 += this.m13 * translation.x + this.m23 * translation.y + this.m33 * translation.z;
-		this.m44 += this.m14 * translation.x + this.m24 * translation.y + this.m34 * translation.z;
+		const m = this.elements;
+		m[cr(3, 0)]! += m[cr(0, 0)]! * translation.x + m[cr(1, 0)]! * translation.y + m[cr(2, 0)]! * translation.z;
+		m[cr(3, 1)]! += m[cr(0, 1)]! * translation.x + m[cr(1, 1)]! * translation.y + m[cr(2, 1)]! * translation.z;
+		m[cr(3, 2)]! += m[cr(0, 2)]! * translation.x + m[cr(1, 2)]! * translation.y + m[cr(2, 2)]! * translation.z;
+		m[cr(3, 3)]! += m[cr(0, 3)]! * translation.x + m[cr(1, 3)]! * translation.y + m[cr(2, 3)]! * translation.z;
 		return this;
 	}
 
 	scale(scale: Vector3) {
-		this.m11 *= scale.x;
-		this.m21 *= scale.y;
-		this.m31 *= scale.z;
-		this.m12 *= scale.x;
-		this.m22 *= scale.y;
-		this.m32 *= scale.z;
-		this.m13 *= scale.x;
-		this.m23 *= scale.y;
-		this.m33 *= scale.z;
-		this.m14 *= scale.x;
-		this.m24 *= scale.y;
-		this.m34 *= scale.z;
+		const m = this.elements;
+		for (let row = 0; row < 4; row++) {
+			m[cr(0, row)]! *= scale.x;
+			m[cr(1, row)]! *= scale.y;
+			m[cr(2, row)]! *= scale.z;
+		}
+		return this;
+	}
+
+	private rotateFromAxisIndex(radians: number, axisIndex1: number, axisIndex2: number) {
+		const sin = Math.sin(radians);
+		const cos = Math.cos(radians);
+		const m = this.elements;
+
+		for (let row = 0; row < 4; row++) {
+			const value1 = m[cr(axisIndex1, row)]!;
+			const value2 = m[cr(axisIndex2, row)]!;
+			m[cr(axisIndex1, row)] = value1 * cos + value2 * sin;
+			m[cr(axisIndex2, row)] = value2 * cos - value1 * sin;
+		}
+
 		return this;
 	}
 
 	rotateX(radians: number) {
-		const s = Math.sin(radians);
-		const c = Math.cos(radians);
-		const a10 = this.m21;
-		const a11 = this.m22;
-		const a12 = this.m23;
-		const a13 = this.m24;
-		const a20 = this.m31;
-		const a21 = this.m32;
-		const a22 = this.m33;
-		const a23 = this.m34;
-
-		// Perform axis-specific matrix multiplication
-		this.m21 = a10 * c + a20 * s;
-		this.m22 = a11 * c + a21 * s;
-		this.m23 = a12 * c + a22 * s;
-		this.m24 = a13 * c + a23 * s;
-		this.m31 = a20 * c - a10 * s;
-		this.m32 = a21 * c - a11 * s;
-		this.m33 = a22 * c - a12 * s;
-		this.m34 = a23 * c - a13 * s;
-		return this;
+		return this.rotateFromAxisIndex(radians, Vector3.Y_INDEX, Vector3.Z_INDEX);
 	}
 
 	rotateY(radians: number) {
-		const s = Math.sin(radians);
-		const c = Math.cos(radians);
-		const a00 = this.m11;
-		const a01 = this.m12;
-		const a02 = this.m13;
-		const a03 = this.m14;
-		const a20 = this.m31;
-		const a21 = this.m32;
-		const a22 = this.m33;
-		const a23 = this.m34;
-
-		// Perform axis-specific matrix multiplication
-		this.m11 = a00 * c - a20 * s;
-		this.m12 = a01 * c - a21 * s;
-		this.m13 = a02 * c - a22 * s;
-		this.m14 = a03 * c - a23 * s;
-		this.m31 = a00 * s + a20 * c;
-		this.m32 = a01 * s + a21 * c;
-		this.m33 = a02 * s + a22 * c;
-		this.m34 = a03 * s + a23 * c;
-		return this;
+		return this.rotateFromAxisIndex(radians, Vector3.X_INDEX, Vector3.Z_INDEX);
 	}
 
 	rotateZ(radians: number) {
-		const s = Math.sin(radians);
-		const c = Math.cos(radians);
-		const a00 = this.m11;
-		const a01 = this.m12;
-		const a02 = this.m13;
-		const a03 = this.m14;
-		const a10 = this.m21;
-		const a11 = this.m22;
-		const a12 = this.m23;
-		const a13 = this.m24;
-
-		// Perform axis-specific matrix multiplication
-		this.m11 = a00 * c + a10 * s;
-		this.m12 = a01 * c + a11 * s;
-		this.m13 = a02 * c + a12 * s;
-		this.m14 = a03 * c + a13 * s;
-		this.m21 = a10 * c - a00 * s;
-		this.m22 = a11 * c - a01 * s;
-		this.m23 = a12 * c - a02 * s;
-		this.m24 = a13 * c - a03 * s;
-		return this;
+		return this.rotateFromAxisIndex(radians, Vector3.X_INDEX, Vector3.Y_INDEX);
 	}
 
 	getTranslation(): Vector3 {
@@ -271,8 +217,22 @@ export class Matrix4 {
 		);
 	}
 
+	static fromValues(
+		c0r0: number, c1r0: number, c2r0: number, c3r0: number,
+		c0r1: number, c1r1: number, c2r1: number, c3r1: number,
+		c0r2: number, c1r2: number, c2r2: number, c3r2: number,
+		c0r3: number, c1r3: number, c2r3: number, c3r3: number,
+	) {
+		return new Matrix4(new Array(16)).set(
+			c0r0, c1r0, c2r0, c3r0,
+			c0r1, c1r1, c2r1, c3r1,
+			c0r2, c1r2, c2r2, c3r2,
+			c0r3, c1r3, c2r3, c3r3,
+		);
+	}
+
 	static identity() {
-		return new Matrix4(
+		return Matrix4.fromValues(
 			1, 0, 0, 0,
 			0, 1, 0, 0,
 			0, 0, 1, 0,
@@ -290,7 +250,7 @@ export class Matrix4 {
 		const bt = 1 / (bottom - top);
 		const nf = 1 / (near - far);
 
-		return new Matrix4(
+		return Matrix4.fromValues(
 			-2 * lr, 0, 0, (left + right) * lr,
 			0, -2 * bt, 0, (top + bottom) * bt,
 			0, 0, 2 * nf, (far + near) * nf,
@@ -302,7 +262,7 @@ export class Matrix4 {
 		const f = 1 / Math.tan(fovy / 2);
 		const nf = 1 / (near - far);
 
-		return new Matrix4(
+		return Matrix4.fromValues(
 			f / aspectRatio, 0, 0, 0,
 			0, f, 0, 0,
 			0, 0, (far + near) * nf, (2 * far * near) * nf,
@@ -314,21 +274,21 @@ export class Matrix4 {
 		const forward = target.clone().subtract(eye).normalize();
 		if (!forward) throw new Error("Cannot create lookAt matrix when eye and target are identical.");
 
-		const side = cross(forward, up).normalize();
+		const side = forward.clone().cross(up).normalize();
 		if (!side) throw new Error("Cannot create lookAt matrix with a degenerate up vector.");
 
-		const cameraUp = cross(side, forward);
+		const cameraUp = side.clone().cross(forward);
 
-		return new Matrix4(
-			side.x, side.y, side.z, -dot(side, eye),
-			cameraUp.x, cameraUp.y, cameraUp.z, -dot(cameraUp, eye),
-			-forward.x, -forward.y, -forward.z, dot(forward, eye),
+		return Matrix4.fromValues(
+			side.x, side.y, side.z, -side.dot(eye),
+			cameraUp.x, cameraUp.y, cameraUp.z, -cameraUp.dot(eye),
+			-forward.x, -forward.y, -forward.z, forward.dot(eye),
 			0, 0, 0, 1,
 		);
 	}
 
 	static translation({x,y,z}: Vector3) {
-		return new Matrix4(
+		return Matrix4.fromValues(
 			1, 0, 0, x,
 			0, 1, 0, y,
 			0, 0, 1, z,
@@ -337,7 +297,7 @@ export class Matrix4 {
 	}
 
 	static scale({x,y,z}: Vector3) {
-		return new Matrix4(
+		return Matrix4.fromValues(
 			x, 0, 0, 0,
 			0, y, 0, 0,
 			0, 0, z, 0,
@@ -345,49 +305,33 @@ export class Matrix4 {
 		);
 	}
 
-	static rotationX(radians: number) {
-		const c = Math.cos(radians), s = Math.sin(radians);
+	static rotationFromAxisIndex(radians: number, axisIndex1: number, axisIndex2: number) {
+		const matrix = Matrix4.identity();
+		const cos = Math.cos(radians);
+		const sin = Math.sin(radians);
 
-		return new Matrix4(
-			1, 0, 0, 0,
-			0, c, -s, 0,
-			0, s, c, 0,
-			0, 0, 0, 1
-		);
+		matrix.elements[cr(axisIndex1, axisIndex1)] = cos;
+		matrix.elements[cr(axisIndex2, axisIndex1)] = -sin;
+		matrix.elements[cr(axisIndex1, axisIndex2)] = sin;
+		matrix.elements[cr(axisIndex2, axisIndex2)] = cos;
+
+		return matrix;
+	}
+
+
+	static rotationX(radians: number) {
+		return Matrix4.rotationFromAxisIndex(radians, Vector3.Y_INDEX, Vector3.Z_INDEX);
 	}
 
 	static rotationY(radians: number) {
-		const c = Math.cos(radians), s = Math.sin(radians);
-
-		return new Matrix4(
-			c, 0, s, 0,
-			0, 1, 0, 0,
-			-s, 0, c, 0,
-			0, 0, 0, 1
-		);
+		return Matrix4.rotationFromAxisIndex(radians, Vector3.X_INDEX, Vector3.Z_INDEX);
 	}
 
 	static rotationZ(radians: number) {
-		const c = Math.cos(radians), s = Math.sin(radians);
-
-		return new Matrix4(
-			c, -s, 0, 0,
-			s, c, 0, 0,
-			0, 0, 1, 0,
-			0, 0, 0, 1
-		);
+		return Matrix4.rotationFromAxisIndex(radians, Vector3.X_INDEX, Vector3.Y_INDEX);
 	}
 }
 
-function dot(a: Vector3, b: Vector3) {
-	return a.x * b.x + a.y * b.y + a.z * b.z;
+function cr(col: number, row: number) {
+	return (col * 4) + row;
 }
-
-function cross(a: Vector3, b: Vector3) {
-	return Vector3.new(
-		a.y * b.z - a.z * b.y,
-		a.z * b.x - a.x * b.z,
-		a.x * b.y - a.y * b.x,
-	);
-}
-

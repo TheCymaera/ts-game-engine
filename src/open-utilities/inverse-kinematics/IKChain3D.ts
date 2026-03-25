@@ -56,6 +56,13 @@ export class IKSwingTwistJoint3D {
 		this.twist = coerceBetween(this.twist + shortestAngleDelta(this.twist, other.twist) * t, this.minTwist, this.maxTwist);
 		return this;
 	}
+
+	rotation() {
+		const direction = directionFromSpherical(this.azimuth, this.swing);
+		const swingRotation = Quaternion.fromTo(IKChain3D.IDENTITY_VECTOR, direction, this.twistBase);
+		const twistRotation = Quaternion.fromAxisAngle(IKChain3D.IDENTITY_VECTOR, this.twist);
+		return swingRotation.multiply(twistRotation)!;
+	}
 }
 
 export class IKHingeJoint3D {
@@ -103,6 +110,10 @@ export class IKHingeJoint3D {
 		this.angle = coerceBetween(this.angle + shortestAngleDelta(this.angle, other.angle) * t, this.minAngle, this.maxAngle);
 		return this;
 	}
+
+	rotation() {
+		return Quaternion.fromAxisAngle(this.axis, this.angle);
+	}
 }
 
 export type IKJoint3D = IKSwingTwistJoint3D | IKHingeJoint3D;
@@ -114,9 +125,7 @@ export interface IKChainSegment3D {
 
 export interface IKChain3DOptions {
 	rootPosition: Vector3;
-	//rootDirection: Vector3;
 	rotation: Quaternion;
-	//rootUp: Vector3;
 	segments: readonly IKChainSegment3D[];
 }
 
@@ -126,7 +135,7 @@ export interface IKChainWorldJoint3D {
 }
 
 export class IKChain3D {
-	static get FORWARD() { return Vector3.new(0, 1, 0); }
+	static get IDENTITY_VECTOR() { return Vector3.new(0, 1, 0); }
 
 	private constructor(
 		readonly rootPosition: Vector3,
@@ -232,40 +241,23 @@ export class IKChain3D {
 			rotation: this.rootRotation.clone(),
 		}];
 
-		let cursor = this.rootPosition.clone();
-		let parentRotation = this.rootRotation.clone();
+		const cursor = this.rootPosition.clone();
+		const cursorRotation = this.rootRotation.clone();
 
 		for (let index = 0; index < this.segments.length; index++) {
 			const segment = this.segments[index]!;
-			const rotation = resolveJointWorldRotation(parentRotation, segment.joint);
+			
+			cursorRotation.multiply(segment.joint.rotation()).normalize()!;
+			cursor.add(IKChain3D.IDENTITY_VECTOR.rotate(cursorRotation).multiply(segment.length));
 
-			const direction = rotation.rotateVector(IKChain3D.FORWARD);
-			cursor.add(direction.multiply(segment.length));
 			joints.push({
 				position: cursor.clone(),
-				rotation,
+				rotation: cursorRotation.clone(),
 			});
-			parentRotation = rotation;
 		}
 
 		return joints;
 	}
-}
-
-function resolveJointWorldRotation(parentRotation: Quaternion, jointState: IKJoint3D) {
-	if (jointState instanceof IKHingeJoint3D) {
-		return parentRotation.clone().multiply(Quaternion.fromAxisAngle(jointState.axis, jointState.angle)).normalize() ?? parentRotation.clone();
-	}
-
-	if (jointState instanceof IKSwingTwistJoint3D) {
-		const direction = directionFromSpherical(jointState.azimuth, jointState.swing);
-		const swingRotation = Quaternion.fromTo(IKChain3D.FORWARD, direction, jointState.twistBase);
-		const twistRotation = Quaternion.fromAxisAngle(IKChain3D.FORWARD, jointState.twist);
-		const localRotation = swingRotation.multiply(twistRotation).normalize() ?? Quaternion.identity();
-		return parentRotation.clone().multiply(localRotation).normalize() ?? parentRotation.clone();
-	}
-
-	throw new Error("IKChain3D received mismatched joint state and constraint types.");
 }
 
 function directionFromSpherical(azimuth: number, swing: number) {
@@ -274,7 +266,7 @@ function directionFromSpherical(azimuth: number, swing: number) {
 		Math.cos(azimuth) * sinSwing,
 		Math.cos(swing),
 		Math.sin(azimuth) * sinSwing,
-	).normalize() ?? IKChain3D.FORWARD;
+	).normalize() ?? IKChain3D.IDENTITY_VECTOR;
 }
 
 function shortestAngleDelta(from: number, to: number) {

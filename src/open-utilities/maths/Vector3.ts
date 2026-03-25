@@ -191,4 +191,8 @@ export class Vector3 {
 	static new(x: number, y: number, z: number) {
 		return new Vector3(x, y, z);
 	}
+
+	static readonly X_INDEX = 0;
+	static readonly Y_INDEX = 1;
+	static readonly Z_INDEX = 2;
 }
