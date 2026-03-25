@@ -1,9 +1,7 @@
 import { Duration } from "@open-utilities/core/Duration";
-import { IKChain3D, IKChainLink3D, SwingTwistJointOptions3D, HingeJointOptions3D } from "@open-utilities/inverse-kinematics/IKChain3D";
+import { IKChain3D, IKChainSegment3D, IKSwingTwistJoint3D, IKHingeJoint3D } from "@open-utilities/inverse-kinematics/IKChain3D";
 import { IKTarget3D } from "@open-utilities/inverse-kinematics/IKSolver";
-import { createFabrikSolver3D } from "@open-utilities/inverse-kinematics/solveFabrik3D";
-import { createRandomizedIKSolver3D } from "@open-utilities/inverse-kinematics/solveRandomizedIK3D";
-import { extractTwistRadians } from "@open-utilities/inverse-kinematics/constrainDirection";
+import { createDampedLeastSquaresIKSolver3D } from "@open-utilities/inverse-kinematics/createDampedLeastSquaresIKSolver3D";
 import { Matrix4 } from "@open-utilities/maths/Matrix4";
 import { Quaternion } from "@open-utilities/maths/Quaternion";
 import { Random } from "@open-utilities/maths/Random";
@@ -22,17 +20,16 @@ debugText.style.color = "#f7f1da";
 const renderer = WebGLRenderer.fromCanvas(canvas);
 renderer.gl.clearColor(0.03, 0.04, 0.07, 1);
 
-const rootPosition = Vector3.new(0, -1.2, 0);
+const rootPosition = Vector3.new(0, 1.2, 0);
 const chain = IKChain3D.new({
 	rootPosition,
-	rootDirection: Vector3.new(0, 1, 0),
-	rootUp: Vector3.new(0, 0, 1),
-	links: [
-		{ length: 1.15, joint: new SwingTwistJointOptions3D({ twistOrigin: Vector3.new(0, 0, 1), maxSwing: 0.2 * Math.PI, minTwist: -1 * Math.PI, maxTwist: 1 * Math.PI }) },
-		{ length: 1.05, joint: new HingeJointOptions3D({ axis: Vector3.new(1, 0, 0), origin: Vector3.new(0, 1, 0), minAngle: -0.3 * Math.PI, maxAngle: 0.3 * Math.PI }) },
-		{ length: 0.95, joint: new HingeJointOptions3D({ axis: Vector3.new(1, 0, 0), origin: Vector3.new(0, 1, 0), minAngle: -0.3 * Math.PI, maxAngle: 0.3 * Math.PI }) },
-		{ length: 0.80, joint: new SwingTwistJointOptions3D({ twistOrigin: Vector3.new(0, 0, 1), maxSwing: 0.22 * Math.PI, minTwist: -0.4 * Math.PI, maxTwist: 0.4 * Math.PI }) },
-		{ length: 0.65, joint: new SwingTwistJointOptions3D({ twistOrigin: Vector3.new(0, 0, 1), maxSwing: 0.25 * Math.PI, minTwist: -0.4 * Math.PI, maxTwist: 0.4 * Math.PI }) },
+	rotation: Quaternion.fromTo(IKChain3D.FORWARD, Vector3.new(0, 1, 0)),
+	segments: [
+		{ length: 0.80, joint: IKSwingTwistJoint3D.new({ twistOrigin: Vector3.new(0, 0, 1), maxSwing: 0.2 * Math.PI, minTwist: -1 * Math.PI, maxTwist: 1 * Math.PI }) },
+		{ length: 1.05, joint: IKHingeJoint3D.new({ axis: Vector3.new(1, 0, 0), origin: Vector3.new(0, 1, 0), minAngle: -0.3 * Math.PI, maxAngle: 0.3 * Math.PI }) },
+		{ length: 0.95, joint: IKHingeJoint3D.new({ axis: Vector3.new(1, 0, 0), origin: Vector3.new(0, 1, 0), minAngle: -0.3 * Math.PI, maxAngle: 0.3 * Math.PI }) },
+		{ length: 0.80, joint: IKSwingTwistJoint3D.new({ twistOrigin: Vector3.new(0, 0, 1), maxSwing: 0.22 * Math.PI, minTwist: -0.4 * Math.PI, maxTwist: 0.4 * Math.PI }) },
+		{ length: 0.65, joint: IKSwingTwistJoint3D.new({ twistOrigin: Vector3.new(0, 0, 1), maxSwing: 0.25 * Math.PI, minTwist: -0.4 * Math.PI, maxTwist: 0.4 * Math.PI }) },
 	],
 });
 
@@ -141,7 +138,7 @@ class VertexBuilder {
 	}
 }
 
-const gridMesh = createGridMesh(lineMaterial, rootPosition.y - 1.7, 6, 0.5);
+const gridMesh = createGridMesh(lineMaterial, 0, 6, 0.5);
 const lineMesh = createEmptyMesh({
 	primitiveType: RenderPrimitiveType.Lines,
 	material: lineMaterial,
@@ -171,15 +168,8 @@ let currentTarget = desiredTarget;
 
 
 const tolerance = 0.01;
-const solver = createRandomizedIKSolver3D({
-	solver: createFabrikSolver3D({
-		tolerance: tolerance,
-		iterations: 8,
-	}),
+const solver = createDampedLeastSquaresIKSolver3D({
 	tolerance: tolerance,
-	attempts: 6,
-	includeOriginalPose: true,
-	random: Random.mulberry32(0)
 });
 
 
@@ -205,7 +195,6 @@ AnimationFrameScheduler.periodic(({ elapsedTime }) => {
 	
 	chain.lerpPose(solvedChain, 1 - Math.exp(-elapsedTime.seconds * chainLerp));
 
-
 	const effector = chain.joints[chain.joints.length - 1]!.position;
 	const error = effector.distanceTo(currentTarget.position);
 	
@@ -213,7 +202,7 @@ AnimationFrameScheduler.periodic(({ elapsedTime }) => {
 	orbitAngle += elapsedTime.seconds * 0.22;
 
 	renderer.setViewTransform(Matrix4.lookAt({
-		eye: Vector3.new(7.4, 4.2, 0).rotateY(orbitAngle),
+		eye: Vector3.new(7.4, 7.0, 0).rotateY(orbitAngle),
 		target: rootPosition.clone().add(Vector3.new(0, 1.3, 0)),
 		up: Vector3.new(0, 1, 0),
 	}));
@@ -336,17 +325,18 @@ function updateMeshes(chain: IKChain3D, target: IKTarget3D, targetReached: boole
 
 function buildConstraintGuides(chain: IKChain3D) {
 	const builder = new VertexBuilder();
+	const joints = chain.joints;
 
-	for (let index = 0; index < chain.links.length; index++) {
-		const link = chain.links[index]!;
-		const parent = chain.joints[index]!;
-		const child = chain.joints[index + 1]!;
+	for (let index = 0; index < chain.segments.length; index++) {
+		const segment = chain.segments[index]!;
+		const parent = joints[index]!;
+		const child = joints[index + 1]!;
 
-		if (link.joint instanceof SwingTwistJointOptions3D) {
+		if (segment.joint instanceof IKSwingTwistJoint3D) {
 			builder.appendBuffer(
 				buildSwingTwistGuide(
 					parent.position,
-					link,
+					segment,
 					parent.rotation,
 					child.rotation,
 				).build()
@@ -354,38 +344,38 @@ function buildConstraintGuides(chain: IKChain3D) {
 			continue;
 		}
 
-		if (link.joint instanceof HingeJointOptions3D) {
+		if (segment.joint instanceof IKHingeJoint3D) {
 			builder.appendBuffer(
 				buildHingeGuide(
 					parent.position,
-					link,
+					segment,
 					parent.rotation,
 				).build()
 			);
 			continue;
 		}
 
-		assertNever(link.joint);
+		assertNever(segment.joint);
 	}
 
 	return builder;
 }
 
 function buildSwingTwistGuide(
-	joint: Vector3,
-	link: IKChainLink3D,
+	jointPosition: Vector3,
+	segment: IKChainSegment3D,
 	parentRotation: Quaternion,
 	jointRotation: Quaternion,
 ) {
-	const constraint = link.joint as SwingTwistJointOptions3D;
+	const constraint = segment.joint as IKSwingTwistJoint3D;
 
-	const builder = buildCone(joint, link.length * .3, constraint.maxSwing, parentRotation);
+	const builder = buildCone(jointPosition, segment.length * .3, constraint.maxSwing, parentRotation);
 
 	const axisWorld = jointRotation.rotateVector(Vector3.new(0, 1, 0)).normalize() ?? Vector3.new(0, 1, 0);
 	const swingDirection = parentRotation.clone().invert()?.rotateVector(axisWorld) ?? Vector3.new(0, 1, 0);
 	const swingRotation = Quaternion.fromTo(Vector3.new(0, 1, 0), swingDirection, Vector3.new(1, 0, 0));
 	const twistBase = parentRotation.clone().multiply(swingRotation).rotateVector(constraint.twistBase);
-	const ringCenter = joint.clone().add(axisWorld.clone().multiply(link.length * .8));
+	const ringCenter = jointPosition.clone().add(axisWorld.clone().multiply(segment.length * .8));
 	const radius = .1;
 	const liveLength = radius * 1.5;
 	
@@ -404,8 +394,8 @@ function buildSwingTwistGuide(
 		spokeColor: twistGuideColor.scaleAlpha(0.85),
 	}).build());
 
-	const twist = extractTwistRadians(jointRotation, parentRotation, swingRotation, constraint.twistBase, Vector3.new(0, 1, 0));
-
+	const joint = segment.joint as IKSwingTwistJoint3D;
+	const twist = joint ? joint.twist : 0;
 
 	const livePoint = ringCenter.clone().add(twistBase.clone().rotateAround(axisWorld, twist).multiply(liveLength));
 	builder.append(ringCenter, twistIndicatorColor);
@@ -485,16 +475,16 @@ function buildCone(position: Vector3, length: number, radians: number, rotation:
 
 function buildHingeGuide(
 	joint: Vector3,
-	link: IKChainLink3D,
+	segment: IKChainSegment3D,
 	parentRotation: Quaternion,
 ) {
 	const color = Color.fromRGBA(121, 184, 255, 130);
 
-	const constraint = link.joint as HingeJointOptions3D;
+	const constraint = segment.joint as IKHingeJoint3D;
 	
 	const axisWorld = constraint.axis.clone().rotate(parentRotation);
 	const referenceWorld = constraint.origin.clone().rotate(parentRotation);
-	const radius = link.length * 0.3;
+	const radius = segment.length * 0.3;
 
 	return buildCircleSegment({
 		center: joint,
