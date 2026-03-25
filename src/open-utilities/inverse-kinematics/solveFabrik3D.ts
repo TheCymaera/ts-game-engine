@@ -1,6 +1,6 @@
 import { IKChain3D } from "./IKChain3D.js";
 import { IKSolver3D, IKTarget3D } from "./IKSolver.js";
-import { constrainDirection, solveUnreachable } from "./solveUnreachable.js";
+import { constrainDirection } from "./constrainDirection.js";
 
 const EPSILON = 0.000001;
 
@@ -14,14 +14,9 @@ export function createFabrikSolver3D(options: FABRIKSolverOptions): IKSolver3D {
 }
 
 function solveFabrik3D(chain: IKChain3D, target: IKTarget3D, options: FABRIKSolverOptions) {
-	chain.jointPositions[0]!.copy(chain.rootPosition);
+	const originalRootPosition = chain.joints[0]!.position.clone();
 
-	if (chain.rootPosition.distanceTo(target.position) >= chain.totalLength - EPSILON) {
-		solveUnreachable(chain, target);
-		return;
-	}
-
-	const endEffector = chain.jointPositions[chain.jointPositions.length - 1]!;
+	const endEffector = chain.joints[chain.joints.length - 1]!.position;
 
 	const iterations = options.iterations ?? 16;
 	const tolerance = options.tolerance ?? 0.001;
@@ -31,42 +26,40 @@ function solveFabrik3D(chain: IKChain3D, target: IKTarget3D, options: FABRIKSolv
 		endEffector.copy(target.position);
 
 		// move parent tip to child
-		for (let index = chain.jointPositions.length - 2; index >= 0; index--) {
-			const joint = chain.jointPositions[index]!;
-			const segment = chain.segments[index]!;
-			const child = chain.jointPositions[index + 1]!;
+		for (let index = chain.joints.length - 2; index >= 0; index--) {
+			const parent = chain.joints[index]!;
+			const child = chain.joints[index + 1]!;
+			const link = chain.links[index]!;
 
-			const toParent = child.clone().subtract(joint);
+			const toParent = child.position.clone().subtract(parent.position);
 			toParent.normalize();
-			toParent.multiply(segment.length);
+			toParent.multiply(link.length);
 
-			joint.copy(child).subtract(toParent);
+			parent.position.copy(child.position).subtract(toParent);
 		}
 
 		// move root back to original position
-		chain.jointPositions[0]!.copy(chain.rootPosition);
+		chain.joints[0]!.position.copy(originalRootPosition);
 
 		// move child to parent tip
-		for (let index = 0; index < chain.segments.length; index++) {
-			const segment = chain.segments[index]!;
-			const joint = chain.jointPositions[index]!;
-			const child = chain.jointPositions[index + 1]!;
-			const parentRotation = index === 0 ? chain.rootRotation : chain.segments[index - 1]!.rotation;
+		for (let index = 0; index < chain.links.length; index++) {
+			const link = chain.links[index]!;
+			const parent = chain.joints[index]!;
+			const child = chain.joints[index + 1]!;
 
-			const targetDirection = child.clone().subtract(joint).normalize() ?? segment.direction;
+			const targetDirection = child.position.clone().subtract(parent.position).normalize() ?? child.rotation.rotateVector(IKChain3D.FORWARD);
 			const result = constrainDirection(
-				segment.constraint,
+				link.joint,
 				targetDirection,
-				parentRotation,
-				segment.rotation,
-				target?.orientation,
+				parent.rotation,
+				child.rotation,
+				index === chain.links.length - 1 ? target.orientation : undefined,
 			);
 
-			segment.direction.copy(result.direction);
-			segment.rotation.copy(result.rotation);
+			child.rotation.copy(result.rotation);
 
-			const tip = joint.clone().add(result.direction.clone().multiply(segment.length));
-			child.copy(tip);
+			const tip = parent.position.clone().add(result.direction.multiply(link.length));
+			child.position.copy(tip);
 		}
 
 		if (endEffector.distanceTo(target.position) <= tolerance) {

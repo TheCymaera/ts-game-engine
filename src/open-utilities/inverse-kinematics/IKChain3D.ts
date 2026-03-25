@@ -4,7 +4,7 @@ import { sumArray } from "../maths/sumArray.js";
 import { Vector3 } from "../maths/Vector3.js";
 import { coerceBetween } from "@open-utilities/maths/coerceBetween.js";
 
-export class IKSwingTwistConstraint3D {
+export class SwingTwistJointOptions3D {
 	maxSwing: number;
 	minTwist: number;
 	maxTwist: number;
@@ -22,7 +22,7 @@ export class IKSwingTwistConstraint3D {
 	}
 }
 
-export class IKHingeConstraint3D {
+export class HingeJointOptions3D {
 	minAngle: number;
 	maxAngle: number;
 	axis: Vector3;
@@ -40,42 +40,42 @@ export class IKHingeConstraint3D {
 	}
 }
 
-export type IKConstraint3D = IKSwingTwistConstraint3D | IKHingeConstraint3D;
+export type Joint3D = SwingTwistJointOptions3D | HingeJointOptions3D;
 
 export interface IKChain3DOptions {
 	rootPosition: Vector3;
 	rootDirection?: Vector3;
 	rootUp?: Vector3;
-	segments: readonly {
+	links: readonly {
 		length: number;
-		constraint: IKConstraint3D;
+		joint: Joint3D;
 	}[];
 }
 
-export interface IKChainSegment3D {
+export interface IKChainLink3D {
 	length: number;
-	constraint: IKConstraint3D;
-	direction: Vector3;
+	joint: Joint3D;
+}
+
+export interface IKChainJoint3D {
+	position: Vector3;
 	rotation: Quaternion;
 }
 
 export class IKChain3D {
-
 	static get FORWARD() { return Vector3.new(0, 1, 0); }
 
 	constructor(
-		readonly rootPosition: Vector3,
-		readonly rootRotation: Quaternion,
-		readonly segments: IKChainSegment3D[],
-		readonly jointPositions: Vector3[],
+		readonly links: IKChainLink3D[],
+		readonly joints: IKChainJoint3D[],
 	) {}
 
 	static new(options: IKChain3DOptions) {
-		if (options.segments.length === 0) {
+		if (options.links.length === 0) {
 			throw new Error("IKChain3D requires at least one segment.");
 		}
 
-		if (options.segments.some(segment => segment.length <= 0)) {
+		if (options.links.some(link => link.length <= 0)) {
 			throw new Error("IKChain3D segment lengths must be positive.");
 		}
 
@@ -85,65 +85,103 @@ export class IKChain3D {
 		const rootUp = options.rootUp?.clone().normalize() ?? rootDirection.clone().orthogonal();
 		const rootRotation = Quaternion.fromForwardUp(rootDirection, rootUp);
 
-		const segments = options.segments.map(segment => ({
-			length: segment.length,
-			constraint: segment.constraint,
-			direction: rootDirection.clone(),
-			rotation: rootRotation.clone(),
+		const links = options.links.map(link => ({
+			length: link.length,
+			joint: link.joint,
 		}));
 
-		const jointPositions = [rootPosition.clone()];
+		const joints = [{
+			position: rootPosition.clone(),
+			rotation: rootRotation.clone()
+		}];
+
 		let cursor = rootPosition.clone();
-		for (const segment of segments) {
-			cursor.add(segment.direction.clone().multiply(segment.length));
-			jointPositions.push(cursor.clone());
+		for (const link of links) {
+			cursor.add(rootDirection.clone().multiply(link.length));
+			joints.push({
+				position: cursor.clone(),
+				rotation: rootRotation.clone(),
+			});
 		}
 
-		return new IKChain3D(rootPosition, rootRotation, segments, jointPositions);
+		return new IKChain3D(links, joints);
 	}
 
 	get totalLength() {
-		return sumArray(this.segments.map(segment => segment.length));
+		return sumArray(this.links.map(link => link.length));
 	}
 
 	clone() {
-		const jointPositions = this.jointPositions.map(position => position.clone());
-		const segments = this.segments.map(segment => ({
-			length: segment.length,
-			constraint: segment.constraint,
-			direction: segment.direction.clone(),
-			rotation: segment.rotation.clone(),
+		const joints = this.joints.map(joint => ({
+			position: joint.position.clone(),
+			rotation: joint.rotation.clone(),
+		}));
+		const links = this.links.map(link => ({
+			length: link.length,
+			joint: link.joint,
 		}));
 
-		return new IKChain3D(this.rootPosition.clone(), this.rootRotation.clone(), segments, jointPositions);
+		return new IKChain3D(links, joints);
 	}
 
-	lerp(other: IKChain3D, amount: number) {
-		if (this.segments.length !== other.segments.length) {
-			throw new Error("IKChain3D.lerp requires chains with the same number of segments.");
+	lerpPose(other: IKChain3D, amount: number) {
+		if (this.links.length !== other.links.length || this.joints.length !== other.joints.length) {
+			throw new Error("IKChain3D.lerpPose requires chains with matching topology.");
 		}
 
 		const t = coerceBetween(amount, 0, 1);
-		this.jointPositions[0]!.copy(this.rootPosition);
+		const currentRotations = this.joints.map(joint => joint.rotation.clone());
 
-		for (let index = 0; index < this.segments.length; index++) {
-			const segment = this.segments[index]!;
-			const otherSegment = other.segments[index]!;
+		this.joints[0]!.rotation.slerp(other.joints[0]!.rotation, t);
 
-			if (Math.abs(segment.length - otherSegment.length) > 0.000001) {
-				throw new Error("IKChain3D.lerp requires chains with matching segment lengths.");
+		for (let index = 1; index < this.joints.length; index++) {
+			const joint = this.joints[index]!;
+			const otherJoint = other.joints[index]!;
+			const constraint = this.links[index - 1]!.joint;
+
+			if (constraint instanceof HingeJointOptions3D) {
+				const currentAngle = extractHingeAngle(currentRotations[index]!, currentRotations[index - 1]!, constraint);
+				const targetAngle = extractHingeAngle(otherJoint.rotation, other.joints[index - 1]!.rotation, constraint);
+				const angle = currentAngle + shortestAngleDelta(currentAngle, targetAngle) * t;
+				const localRotation = Quaternion.fromAxisAngle(constraint.axis, angle);
+				joint.rotation.copy(this.joints[index - 1]!.rotation.clone().multiply(localRotation).normalize() ?? otherJoint.rotation);
+			} else {
+				joint.rotation.copy(currentRotations[index]!).slerp(otherJoint.rotation, t);
 			}
-
-			segment.rotation.slerp(otherSegment.rotation, t);
-			const direction = segment.rotation.rotateVector(Vector3.new(0, 1, 0)).normalize() ?? otherSegment.direction.clone();
-			segment.direction.copy(direction);
-
-			const joint = this.jointPositions[index]!;
-			this.jointPositions[index + 1]!.copy(
-				joint.clone().add(direction.clone().multiply(segment.length)),
-			);
 		}
 
+		this.updatePositions();
 		return this;
 	}
+
+	updatePositions() {
+		let cursor = this.joints[0]!.position.clone();
+		for (let index = 0; index < this.links.length; index++) {
+			const link = this.links[index]!;
+			const joint = this.joints[index + 1]!;
+
+			const direction = joint.rotation.rotateVector(IKChain3D.FORWARD);
+			cursor.add(direction.multiply(link.length));
+			joint.position.copy(cursor);
+		}
+	}
+}
+
+function extractHingeAngle(rotation: Quaternion, parentRotation: Quaternion, constraint: HingeJointOptions3D) {
+	const direction = rotation.rotateVector(constraint.origin);
+	const localDirection = direction.rotate(parentRotation.clone().invert()!).normalize() ?? constraint.origin.clone();
+	return signedAngleAroundAxis(constraint.origin, localDirection, constraint.axis);
+}
+
+function signedAngleAroundAxis(from: Vector3, to: Vector3, axis: Vector3) {
+	const sine = axis.dot(from.clone().cross(to));
+	const cosine = coerceBetween(from.dot(to), -1, 1);
+	return Math.atan2(sine, cosine);
+}
+
+function shortestAngleDelta(from: number, to: number) {
+	let delta = to - from;
+	while (delta > Math.PI) delta -= Math.PI * 2;
+	while (delta < -Math.PI) delta += Math.PI * 2;
+	return delta;
 }

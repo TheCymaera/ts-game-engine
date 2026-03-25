@@ -2,49 +2,23 @@ import { coerceBetween } from "@open-utilities/maths/coerceBetween";
 import { Quaternion } from "@open-utilities/maths/Quaternion";
 import { Vector3 } from "@open-utilities/maths/Vector3";
 import { assertNever } from "@open-utilities/types/assertNever";
-import { IKChain3D, IKConstraint3D, IKHingeConstraint3D, IKSwingTwistConstraint3D } from "./IKChain3D";
-import { IKTarget3D } from "./IKSolver";
+import { HingeJointOptions3D, IKChain3D, Joint3D, SwingTwistJointOptions3D } from "./IKChain3D";
 
 const EPSILON = 0.000001;
 
-export function solveUnreachable(chain: IKChain3D, target: IKTarget3D) {
-	chain.jointPositions[0]!.copy(chain.rootPosition);
-
-	for (let index = 0; index < chain.segments.length; index++) {
-		const segment = chain.segments[index]!;
-
-		const joint = chain.jointPositions[index]!;
-		const parentRotation = index === 0 ? chain.rootRotation : chain.segments[index - 1]!.rotation;
-		const desiredDirection = target.position.clone().subtract(joint).normalize() ?? segment.direction;
-
-		const result = constrainDirection(
-			segment.constraint,
-			desiredDirection,
-			parentRotation,
-			segment.rotation,
-			target?.orientation,
-		);
-		segment.direction.copy(result.direction);
-		segment.rotation.copy(result.rotation);
-
-		const tip = joint.clone().add(result.direction.clone().multiply(segment.length));
-		chain.jointPositions[index + 1]!.copy(tip);
-	}
-}
-
 
 export function constrainDirection(
-	constraint: IKConstraint3D,
+	constraint: Joint3D,
 	targetDirection: Vector3,
 	parentRotation: Quaternion,
 	currentRotation: Quaternion,
 	desiredRotation?: Quaternion,
 ) {
-	if (constraint instanceof IKSwingTwistConstraint3D) {
+	if (constraint instanceof SwingTwistJointOptions3D) {
 		return constrainSwingTwist(targetDirection, parentRotation, constraint, currentRotation, desiredRotation);
 	}
 
-	if (constraint instanceof IKHingeConstraint3D) {
+	if (constraint instanceof HingeJointOptions3D) {
 		return constrainHinge(targetDirection, parentRotation, constraint);
 	}
 
@@ -54,7 +28,7 @@ export function constrainDirection(
 function constrainSwingTwist(
 	targetDirection: Vector3,
 	parentRotation: Quaternion,
-	constraint: IKSwingTwistConstraint3D,
+	constraint: SwingTwistJointOptions3D,
 	currentRotation: Quaternion,
 	desiredRotation?: Quaternion,
 ) {
@@ -81,7 +55,7 @@ function constrainSwingTwist(
 function constrainHinge(
 	targetDirection: Vector3,
 	parentRotation: Quaternion,
-	constraint: IKHingeConstraint3D,
+	constraint: HingeJointOptions3D,
 ) {
 	// get local
 	let targetLocal = targetDirection.clone().rotate(parentRotation.clone().invert()!).normalize()!;

@@ -60,49 +60,43 @@ function solveRandomizedIK3D(chain: IKChain3D, target: IKTarget3D, options: Requ
 
 function capturePose(chain: IKChain3D): IKChainPose3D {
 	return {
-		segmentDirections: chain.segments.map(segment => segment.direction.clone()),
-		segmentRotations: chain.segments.map(segment => segment.rotation.clone()),
-		jointPositions: chain.jointPositions.map(position => position.clone()),
+		jointRotations: chain.joints.map(joint => joint.rotation.clone()),
+		jointPositions: chain.joints.map(joint => joint.position.clone()),
 	};
 }
 
 function applyPose(chain: IKChain3D, pose: IKChainPose3D) {
-	for (const [index, segment] of chain.segments.entries()) {
-		segment.direction.copy(pose.segmentDirections[index]!);
-		segment.rotation.copy(pose.segmentRotations[index]!);
-	}
-
-	for (const [index, jointPosition] of chain.jointPositions.entries()) {
-		jointPosition.copy(pose.jointPositions[index]!);
+	for (const [index, joint] of chain.joints.entries()) {
+		joint.rotation.copy(pose.jointRotations[index]!);
+		joint.position.copy(pose.jointPositions[index]!);
 	}
 }
 
 function applyRandomPose(chain: IKChain3D, random: Random) {
-	chain.jointPositions[0]!.copy(chain.rootPosition);
-
-	for (let index = 0; index < chain.segments.length; index++) {
-		const segment = chain.segments[index]!;
-		const joint = chain.jointPositions[index]!;
-		const parentRotation = index === 0 ? chain.rootRotation : chain.segments[index - 1]!.rotation;
+	for (let index = 0; index < chain.links.length; index++) {
+		const link = chain.links[index]!;
+		const parent = chain.joints[index]!;
+		const child = chain.joints[index + 1]!;
 
 		//const maxDelta = .3;
-		//const rotationDelta = parentRotation.clone().multiply(Quaternion.fromEuler(
+		//const rotationDelta = parent.rotation.clone().multiply(Quaternion.fromEuler(
 		//	random.nextFloat(-maxDelta, maxDelta),
 		//	random.nextFloat(-maxDelta, maxDelta),
 		//	random.nextFloat(-maxDelta, maxDelta),
 		//)).normalize() ?? Quaternion.identity();
 
-		//const rotation = rotationDelta.multiply(segment.rotation).normalize() ?? segment.rotation.clone();
+		//const rotation = rotationDelta.multiply(child.rotation).normalize() ?? child.rotation.clone();
 
 		const rotation = Quaternion.fromEuler(
 			random.nextFloat(-Math.PI, Math.PI),
 			random.nextFloat(-Math.PI, Math.PI),
 			random.nextFloat(-Math.PI, Math.PI),
-		).multiply(parentRotation).normalize() ?? parentRotation.clone();
+		).multiply(parent.rotation).normalize() ?? parent.rotation.clone();
 
+		child.rotation.copy(rotation);
 		const direction = rotation.rotateVector(IKChain3D.FORWARD);
 
-		chain.jointPositions[index + 1]!.copy(joint.clone().add(direction.clone().multiply(segment.length)));
+		child.position.copy(parent.position).add(direction.multiply(link.length));
 	}
 }
 
@@ -113,7 +107,7 @@ function getError(chain: IKChain3D, target: IKTarget3D) {
 }
 
 function getPositionError(chain: IKChain3D, target: Vector3) {
-	const endEffector = chain.jointPositions[chain.jointPositions.length - 1]!;
+	const endEffector = chain.joints[chain.joints.length - 1]!.position;
 	return endEffector.distanceTo(target);
 }
 
@@ -122,7 +116,7 @@ function getOrientationError(chain: IKChain3D, targetOrientation?: Quaternion) {
 		return Number.NEGATIVE_INFINITY;
 	}
 
-	const endEffectorRotation = chain.segments[chain.segments.length - 1]!.rotation;
+	const endEffectorRotation = chain.joints[chain.joints.length - 1]!.rotation;
 	const dot = Math.abs(
 		endEffectorRotation.x * targetOrientation.x +
 		endEffectorRotation.y * targetOrientation.y +
@@ -146,8 +140,7 @@ function isBetterResult(error: SolverError, bestError: SolverError) {
 }
 
 interface IKChainPose3D {
-	segmentDirections: Vector3[];
-	segmentRotations: Quaternion[];
+	jointRotations: Quaternion[];
 	jointPositions: Vector3[];
 }
 
