@@ -1,5 +1,9 @@
 import { Duration } from "@open-utilities/core/Duration";
-import { IKChain3D, IKChainSegment3D, IKHingeConstraint3D, IKSwingTwistConstraint3D } from "@open-utilities/inverse-kinematics/IKChain3D";
+import { IKChain3D, IKSwingTwistConstraint3D, IKHingeConstraint3D, IKChainSegment3D } from "@open-utilities/inverse-kinematics/IKChain3D";
+import { IKTarget3D } from "@open-utilities/inverse-kinematics/IKSolver";
+import { createFabrikSolver3D } from "@open-utilities/inverse-kinematics/solveFabrik3D";
+import { createRandomizedIKSolver3D } from "@open-utilities/inverse-kinematics/solveRandomizedIK3D";
+import { extractTwistRadians } from "@open-utilities/inverse-kinematics/solveUnreachable";
 import { Matrix4 } from "@open-utilities/maths/Matrix4";
 import { Quaternion } from "@open-utilities/maths/Quaternion";
 import { Random } from "@open-utilities/maths/Random";
@@ -7,12 +11,9 @@ import { Vector3 } from "@open-utilities/maths/Vector3";
 import { AnimationFrameScheduler } from "@open-utilities/rendering/AnimationFrameScheduler";
 import { Color } from "@open-utilities/rendering/Color";
 import { BufferBuilder, Geometry, GeometryUsage, Material, Mesh, RenderPrimitiveType, RenderUniformFloat, RenderUniformInt, ShaderModule, VertexAttributeKind, VertexAttributeLayout, VertexAttributeType, WebGLRenderer } from "@open-utilities/rendering/WebGLRenderer";
-import { solveRandomizedIK3D as solveRandomized3D } from "@open-utilities/inverse-kinematics/solveRandomizedIK3D";
-import { extractTwistRadians, solveFabrik3D } from "@open-utilities/inverse-kinematics/solveFabrik3D";
 import { dedent } from "@open-utilities/string/dedent";
 
-const canvasElement = document.querySelector("canvas")!;
-const canvas = canvasElement;
+const canvas = document.querySelector("canvas")!;
 
 const debugText = document.querySelector("#debug-text") as HTMLElement;
 debugText.style.color = "#f7f1da";
@@ -182,51 +183,56 @@ const constraintGuideMesh = createMesh({
 });
 
 const RETARGET_INTERVAL = () => Duration.seconds(random.nextFloat(2.2, 4.2));
-let currentTargetOffset = Vector3.new(0, 0, 0);
-let desiredTargetOffset = Vector3.new(0, 0, 0);
-let targetOrientation: Quaternion | undefined = undefined;
 let retargetTimer = RETARGET_INTERVAL();
 let orbitAngle = 0;
 
-function retarget() {
-	desiredTargetOffset = randomVectorInRadius(targetRadius);
-	//targetOrientation = Quaternion.fromAxisAngle(Vector3.new(0, 1, 0), random.nextFloat(0, Math.PI * 2));
-	targetOrientation = undefined;
+function randomTarget(): IKTarget3D {
+	return new IKTarget3D(
+		rootPosition.clone().add(randomVectorInRadius(targetRadius)),
+		undefined, //Quaternion.fromAxisAngle(Vector3.new(0, 1, 0), random.nextFloat(0, Math.PI * 2)),
+	);
 }
-retarget();
+
+let desiredTarget = randomTarget();
+let currentTarget = desiredTarget;
+
+const solver = createRandomizedIKSolver3D({
+	solver: createFabrikSolver3D({
+		tolerance: 0.01,
+		iterations: 8,
+	}),
+	tolerance: 0.01,
+	//attempts: 6,
+	attempts: 1,
+	random,
+});
+
 
 AnimationFrameScheduler.periodic(({ elapsedTime }) => {
 	updateCanvasDimensions();
 
 	retargetTimer = retargetTimer.subtract(elapsedTime);
 	if (retargetTimer.milliseconds <= 0) {
-		retarget();
+		desiredTarget = randomTarget();
 		retargetTimer = RETARGET_INTERVAL();
 	}
 
 	const smoothing = 1 - Math.exp(-elapsedTime.seconds * 1.5);
-	currentTargetOffset = currentTargetOffset.lerp(desiredTargetOffset, smoothing);
-	const target = rootPosition.clone().add(currentTargetOffset);
+	currentTarget.lerp(desiredTarget, smoothing);
 	
 	const tolerance = 0.01;
 	const solvedChain = chain.clone();
-	solveRandomized3D(solvedChain, {
-		target,
-		targetOrientation,
-		attempts: 6,
-		tolerance,
-		solver: (chain) => solveFabrik3D(chain, { target, targetOrientation }),
-	});
+	solver(solvedChain, currentTarget);
 	
 	const lerp = 1; //1 - Math.exp(-elapsedTime.seconds * 3);
 	chain.lerp(solvedChain, lerp);
 
 
 	const effector = chain.jointPositions[chain.jointPositions.length - 1]!;
-	const error = effector.distanceTo(target);
+	const error = effector.distanceTo(currentTarget.position);
 	
 	updateChainMeshes(chain);
-	updateTargetMesh(target, targetOrientation, error <= tolerance);
+	updateTargetMesh(currentTarget.position, currentTarget.orientation, error <= tolerance);
 	orbitAngle += elapsedTime.seconds * 0.22;
 
 	renderer.setViewTransform(Matrix4.lookAt({
@@ -245,7 +251,7 @@ AnimationFrameScheduler.periodic(({ elapsedTime }) => {
 	renderer.drawMesh(targetPointMesh);
 
 	debugText.textContent = dedent`
-		target: ${target.toString()}
+		target: ${currentTarget.position.toString()}
 		effector: ${effector.toString()}
 		error: ${error.toFixed(4)}
 		retarget in: ${Math.max(retargetTimer.seconds, 0).toFixed(2)}s

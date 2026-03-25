@@ -1,40 +1,24 @@
 import { Random } from "../maths/Random.js";
 import { Quaternion } from "../maths/Quaternion.js";
 import { Vector3 } from "../maths/Vector3.js";
-import { IKChain3D, IKHingeConstraint3D, IKSwingTwistConstraint3D, type IKConstraint3D } from "./IKChain3D.js";
+import { IKChain3D } from "./IKChain3D.js";
+import { IKSolver3D, IKTarget3D } from "./IKSolver.js";
 
 const EPSILON = 0.000001;
 
-interface IKChainPose3D {
-	segmentDirections: Vector3[];
-	segmentRotations: Quaternion[];
-	jointPositions: Vector3[];
-}
-
 export interface RandomizedSolverOptions {
-	target: Vector3;
-	targetOrientation?: Quaternion;
-	solver: (chain: IKChain3D) => void;
-
-	tolerance?: number;
-	attempts?: number;
-	random?: Random;
-}
-
-export interface SolverError {
-	position: number;
-	orientation: number;
-}
-
-export interface RandomizedSolverResult {
+	solver: IKSolver3D;
+	tolerance: number;
 	attempts: number;
-	error: SolverError;
+	random: Random;
 }
 
-export function solveRandomizedIK3D(chain: IKChain3D, options: RandomizedSolverOptions): RandomizedSolverResult {
+export function createRandomizedIKSolver3D(options: RandomizedSolverOptions): IKSolver3D {
+	return (chain: IKChain3D, target: IKTarget3D) => solveRandomizedIK3D(chain, target, options);
+}
+
+function solveRandomizedIK3D(chain: IKChain3D, target: IKTarget3D, options: RandomizedSolverOptions) {
 	const baselinePose = capturePose(chain);
-	const totalAttempts = Math.max(1, Math.floor(options.attempts ?? 8));
-	const random = options.random ?? Random.default;
 
 	let bestPose = baselinePose;
 
@@ -45,22 +29,19 @@ export function solveRandomizedIK3D(chain: IKChain3D, options: RandomizedSolverO
 	
 	let tolerance = options.tolerance ?? 0.001;
 
-	for (let attempt = 0; attempt < totalAttempts; attempt++) {
+	for (let attempt = 0; attempt < options.attempts; attempt++) {
 		if (attempt === 0) {
 			applyPose(chain, baselinePose);
 		} else {
-			applyRandomPose(chain, random);
+			applyRandomPose(chain, options.random);
 		}
 
-		options.solver(chain);
+		options.solver(chain, target);
 
-		const error = getError(chain, options);
+		const error = getError(chain, target);
 
 		if (error.position <= tolerance && error.orientation <= tolerance) {
-			return {
-				attempts: attempt + 1,
-				error,
-			};
+			return
 		}
 
 		if (isBetterResult(error, bestError)) {
@@ -70,11 +51,6 @@ export function solveRandomizedIK3D(chain: IKChain3D, options: RandomizedSolverO
 	}
 
 	applyPose(chain, bestPose);
-
-	return {
-		attempts: totalAttempts,
-		error: bestError,
-	};
 }
 
 function capturePose(chain: IKChain3D): IKChainPose3D {
@@ -125,9 +101,9 @@ function applyRandomPose(chain: IKChain3D, random: Random) {
 	}
 }
 
-function getError(chain: IKChain3D, options: { target: Vector3; targetOrientation?: Quaternion }) {
-	const position = getPositionError(chain, options.target);
-	const orientation = getOrientationError(chain, options.targetOrientation);
+function getError(chain: IKChain3D, target: IKTarget3D) {
+	const position = getPositionError(chain, target.position);
+	const orientation = getOrientationError(chain, target.orientation);
 	return { position, orientation };
 }
 
@@ -162,4 +138,15 @@ function isBetterResult(error: SolverError, bestError: SolverError) {
 	}
 
 	return error.orientation < bestError.orientation - EPSILON;
+}
+
+interface IKChainPose3D {
+	segmentDirections: Vector3[];
+	segmentRotations: Quaternion[];
+	jointPositions: Vector3[];
+}
+
+interface SolverError {
+	position: number;
+	orientation: number;
 }
