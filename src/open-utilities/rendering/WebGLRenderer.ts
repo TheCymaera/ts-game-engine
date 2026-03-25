@@ -67,10 +67,10 @@ export class WebGLRenderer {
 	}
 
 	#builtInUniforms = {
-		uModel: new RenderUniformMatrix4(Matrix4.identity()),
-		uView: new RenderUniformMatrix4(Matrix4.identity()),
-		uProjection: new RenderUniformMatrix4(Matrix4.identity()),
-		uModelViewProjection: new RenderUniformMatrix4(Matrix4.identity()),
+		uModel: new ShaderUniformMatrix4(Matrix4.identity()),
+		uView: new ShaderUniformMatrix4(Matrix4.identity()),
+		uProjection: new ShaderUniformMatrix4(Matrix4.identity()),
+		uModelViewProjection: new ShaderUniformMatrix4(Matrix4.identity()),
 	} satisfies UniformList;
 
 
@@ -170,7 +170,7 @@ export class ShaderModule {
 	}
 }
 
-export type UniformList = Record<string, RenderUniform>;
+export type UniformList = Record<string, ShaderUniform>;
 
 export class Material<TUniforms extends UniformList = UniformList> {
 	readonly shader: ShaderModule;
@@ -187,11 +187,11 @@ export class Material<TUniforms extends UniformList = UniformList> {
 	}
 }
 
-export interface RenderUniform {
+export interface ShaderUniform {
 	bindGl(gl: WebGL2RenderingContext, location: WebGLUniformLocation): void;
 }
 
-export class RenderUniformInt implements RenderUniform {
+export class ShaderUniformInt implements ShaderUniform {
 	constructor(public value: number) {}
 
 	bindGl(gl: WebGL2RenderingContext, location: WebGLUniformLocation) {
@@ -199,7 +199,7 @@ export class RenderUniformInt implements RenderUniform {
 	}
 }
 
-export class RenderUniformFloat implements RenderUniform {
+export class ShaderUniformFloat implements ShaderUniform {
 	constructor(public value: number) {}
 
 	bindGl(gl: WebGL2RenderingContext, location: WebGLUniformLocation) {
@@ -207,7 +207,7 @@ export class RenderUniformFloat implements RenderUniform {
 	}
 }
 
-export class RenderUniformMatrix4 implements RenderUniform {
+export class ShaderUniformMatrix4 implements ShaderUniform {
 	constructor(public value: Matrix4) {}
 
 	bindGl(gl: WebGL2RenderingContext, location: WebGLUniformLocation) {

@@ -9,7 +9,7 @@ import {
 	Mesh,
 	RenderPrimitiveType,
 	ShaderModule,
-	RenderUniformFloat,
+	ShaderUniformFloat,
 	VertexAttributeKind,
 	VertexAttributeType,
 	WebGLRenderer,
@@ -116,7 +116,7 @@ const shader = new ShaderModule({
 const material = new Material({
 	shader,
 	uniforms: {
-		uAlpha: new RenderUniformFloat(1),
+		uAlpha: new ShaderUniformFloat(1),
 	},
 });
 

@@ -65,8 +65,8 @@ function constrainSwingTwist(
 
 	// derive twist from the desired end-effector orientation when one is provided.
 	let twist = desiredRotation
-		? extractDrivenTwistRadians(desiredRotation, parentRotation, localRotation, constraint.twistOrigin, IKChain3D.FORWARD)
-		: extractTwistRadians(currentRotation, parentRotation, localRotation, constraint.twistOrigin, IKChain3D.FORWARD);
+		? extractDrivenTwistRadians(desiredRotation, parentRotation, localRotation, constraint.twistBase, IKChain3D.FORWARD)
+		: extractTwistRadians(currentRotation, parentRotation, localRotation, constraint.twistBase, IKChain3D.FORWARD);
 	twist = coerceBetween(twist, constraint.minTwist, constraint.maxTwist);
 
 	// apply twist

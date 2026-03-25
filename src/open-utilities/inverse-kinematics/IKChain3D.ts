@@ -8,7 +8,7 @@ export class IKSwingTwistConstraint3D {
 	maxSwing: number;
 	minTwist: number;
 	maxTwist: number;
-	twistOrigin: Vector3;
+	twistBase: Vector3;
 
 	constructor(options: { maxSwing: number; minTwist: number; maxTwist: number; twistOrigin: Vector3 }) {
 		if (options.minTwist > options.maxTwist) {
@@ -18,7 +18,7 @@ export class IKSwingTwistConstraint3D {
 		this.maxSwing = coerceBetween(options.maxSwing, 0, Math.PI);
 		this.minTwist = options.minTwist;
 		this.maxTwist = options.maxTwist;
-		this.twistOrigin = options.twistOrigin.clone().normalize() ?? assertUnreachable("IKChain3D constraint.twistOrigin must be non-zero.");
+		this.twistBase = options.twistOrigin.clone().normalize() ?? assertUnreachable("IKChain3D constraint.twistOrigin must be non-zero.");
 	}
 }
 

@@ -10,7 +10,7 @@ import { Random } from "@open-utilities/maths/Random";
 import { Vector3 } from "@open-utilities/maths/Vector3";
 import { AnimationFrameScheduler } from "@open-utilities/rendering/AnimationFrameScheduler";
 import { Color } from "@open-utilities/rendering/Color";
-import { BufferBuilder, Geometry, GeometryUsage, Material, Mesh, RenderPrimitiveType, RenderUniformFloat, RenderUniformInt, ShaderModule, VertexAttributeKind, VertexAttributeLayout, VertexAttributeType, WebGLRenderer } from "@open-utilities/rendering/WebGLRenderer";
+import { BufferBuilder, Geometry, GeometryUsage, Material, Mesh, RenderPrimitiveType, ShaderUniformFloat, ShaderUniformInt, ShaderModule, VertexAttributeKind, VertexAttributeLayout, VertexAttributeType, WebGLRenderer } from "@open-utilities/rendering/WebGLRenderer";
 import { dedent } from "@open-utilities/string/dedent";
 
 const canvas = document.querySelector("canvas")!;
@@ -85,24 +85,24 @@ const layout = new VertexAttributeLayout()
 const lineMaterial = new Material({
 	shader: primitiveShader,
 	uniforms: {
-		uPointSize: new RenderUniformFloat(1),
-		uRoundPoints: new RenderUniformInt(0),
+		uPointSize: new ShaderUniformFloat(1),
+		uRoundPoints: new ShaderUniformInt(0),
 	},
 });
 
 const jointMaterial = new Material({
 	shader: primitiveShader,
 	uniforms: {
-		uPointSize: new RenderUniformFloat(12),
-		uRoundPoints: new RenderUniformInt(1),
+		uPointSize: new ShaderUniformFloat(12),
+		uRoundPoints: new ShaderUniformInt(1),
 	},
 });
 
 const targetMaterial = new Material({
 	shader: primitiveShader,
 	uniforms: {
-		uPointSize: new RenderUniformFloat(18),
-		uRoundPoints: new RenderUniformInt(1),
+		uPointSize: new ShaderUniformFloat(18),
+		uRoundPoints: new ShaderUniformInt(1),
 	},
 });
 
@@ -145,7 +145,7 @@ class VertexBuilder {
 }
 
 const gridMesh = createGridMesh(lineMaterial, rootPosition.y - 1.7, 6, 0.5);
-const chainLineMesh = createMesh({
+const lineMesh = createMesh({
 	primitiveType: RenderPrimitiveType.Lines,
 	vertexCount: 0,
 	indices: incrementingIndices(0),
@@ -157,29 +157,11 @@ const jointMesh = createMesh({
 	indices: incrementingIndices(0),
 	material: jointMaterial,
 });
-const targetAxesMesh = createMesh({
-	primitiveType: RenderPrimitiveType.Lines,
-	vertexCount: 0,
-	indices: incrementingIndices(0),
-	material: lineMaterial,
-});
-const targetPointMesh = createMesh({
+const targetMesh = createMesh({
 	primitiveType: RenderPrimitiveType.Points,
 	vertexCount: 0,
 	indices: incrementingIndices(0),
 	material: targetMaterial,
-});
-const jointAxesMesh = createMesh({
-	primitiveType: RenderPrimitiveType.Lines,
-	vertexCount: 0,
-	indices: incrementingIndices(0),
-	material: lineMaterial,
-});
-const constraintGuideMesh = createMesh({
-	primitiveType: RenderPrimitiveType.Lines,
-	vertexCount: 0,
-	indices: incrementingIndices(0),
-	material: lineMaterial,
 });
 
 const RETARGET_INTERVAL = () => Duration.seconds(random.nextFloat(2.2, 4.2));
@@ -202,8 +184,8 @@ const solver = createRandomizedIKSolver3D({
 		iterations: 8,
 	}),
 	tolerance: 0.01,
-	//attempts: 6,
-	attempts: 1,
+	attempts: 6,
+	//attempts: 1,
 	random,
 });
 
@@ -217,22 +199,21 @@ AnimationFrameScheduler.periodic(({ elapsedTime }) => {
 		retargetTimer = RETARGET_INTERVAL();
 	}
 
-	const smoothing = 1 - Math.exp(-elapsedTime.seconds * 1.5);
-	currentTarget.lerp(desiredTarget, smoothing);
+	const targetLerp = 1 - Math.exp(-elapsedTime.seconds * 1.5);
+	currentTarget.lerp(desiredTarget, targetLerp);
 	
 	const tolerance = 0.01;
 	const solvedChain = chain.clone();
 	solver(solvedChain, currentTarget);
 	
-	const lerp = 1; //1 - Math.exp(-elapsedTime.seconds * 3);
-	chain.lerp(solvedChain, lerp);
+	const chainLerp = 1; //1 - Math.exp(-elapsedTime.seconds * 3);
+	chain.lerp(solvedChain, chainLerp);
 
 
 	const effector = chain.jointPositions[chain.jointPositions.length - 1]!;
 	const error = effector.distanceTo(currentTarget.position);
 	
-	updateChainMeshes(chain);
-	updateTargetMesh(currentTarget.position, currentTarget.orientation, error <= tolerance);
+	updateMeshes(chain, currentTarget, error <= tolerance);
 	orbitAngle += elapsedTime.seconds * 0.22;
 
 	renderer.setViewTransform(Matrix4.lookAt({
@@ -243,12 +224,9 @@ AnimationFrameScheduler.periodic(({ elapsedTime }) => {
 
 	renderer.clear();
 	renderer.drawMesh(gridMesh);
-	renderer.drawMesh(constraintGuideMesh);
-	renderer.drawMesh(jointAxesMesh);
-	renderer.drawMesh(targetAxesMesh);
-	renderer.drawMesh(chainLineMesh);
+	renderer.drawMesh(lineMesh);
 	renderer.drawMesh(jointMesh);
-	renderer.drawMesh(targetPointMesh);
+	renderer.drawMesh(targetMesh);
 
 	debugText.textContent = dedent`
 		target: ${currentTarget.position.toString()}
@@ -288,92 +266,76 @@ const JOINT_COLOR = (index: number, total: number) => {
 	return Color.fromRGBHex(0x96f2d7).lerp(Color.fromRGBHex(0xffb86c), progress);
 };
 
-function updateChainMeshes(chain: IKChain3D) {
-	const chainBuilder = new VertexBuilder();
-	const jointBuilder = new VertexBuilder();
+function buildAxes(position: Vector3, rotation: Quaternion, length: number) {
+	const X_COLOR = Color.red.scaleAlpha(0.5);
+	const Y_COLOR = Color.green.scaleAlpha(0.5);
+	const Z_COLOR = Color.blue.scaleAlpha(0.5);
 
+	return new VertexBuilder()
+		.append(position, X_COLOR)
+		.append(position.clone().add(rotation.rotateVector(Vector3.new(length, 0, 0))), X_COLOR)
+		.append(position, Y_COLOR)
+		.append(position.clone().add(rotation.rotateVector(Vector3.new(0, length, 0))), Y_COLOR)
+		.append(position, Z_COLOR)
+		.append(position.clone().add(rotation.rotateVector(Vector3.new(0, 0, length))), Z_COLOR);
+}
+
+function buildSegments(chain: IKChain3D) {
+	const builder = new VertexBuilder();
 	const jointPositions = chain.jointPositions;
 
 	for (let index = 0; index < jointPositions.length - 1; index++) {
 		const start = jointPositions[index]!;
 		const end = jointPositions[index + 1]!;
 
-		chainBuilder.append(start, LINE_COLOR(index, jointPositions.length - 1));
-		chainBuilder.append(end, LINE_COLOR(index, jointPositions.length - 1));
+		const color = LINE_COLOR(index, jointPositions.length - 1);
+		builder.append(start, color);
+		builder.append(end, color);
 	}
+
+	return builder;
+}
+
+function updateMeshes(chain: IKChain3D, target: IKTarget3D, targetReached: boolean) {
+	const jointBuilder = new VertexBuilder();
+
+	const jointPositions = chain.jointPositions;
 	
 	for (const [index, position] of jointPositions.entries()) {
 		jointBuilder.append(position, JOINT_COLOR(index, jointPositions.length));
 	}
 
-	const joinAxes = buildJointAxes(jointPositions);
-	const constraintGuides = buildConstraintGuides(jointPositions);
+	const allLines = new VertexBuilder()
 
-	chainLineMesh.geometry.setVertexData(chainBuilder.build());
-	chainLineMesh.geometry.setIndexData(incrementingIndices(chainBuilder.builder.length / layout.stride));
+	// segments
+	allLines.appendBuffer(buildSegments(chain).build())
 	
-	jointMesh.geometry.setVertexData(jointBuilder.build());
-	jointMesh.geometry.setIndexData(incrementingIndices(jointBuilder.builder.length / layout.stride));
-	
-	jointAxesMesh.geometry.setVertexData(joinAxes.build());
-	jointAxesMesh.geometry.setIndexData(incrementingIndices(joinAxes.builder.length / layout.stride));
+	// guides
+	allLines.appendBuffer(buildConstraintGuides(jointPositions).build());
 
-	constraintGuideMesh.geometry.setVertexData(constraintGuides.build());
-	constraintGuideMesh.geometry.setIndexData(incrementingIndices(constraintGuides.builder.length / layout.stride));
-}
-
-function updateTargetMesh(target: Vector3, targetOrientation: Quaternion | undefined, reached: boolean) {
-	const TARGET_COLOR = reached ? Color.green : Color.red;
-	const X_COLOR = Color.red.scaleAlpha(0.5);
-	const Y_COLOR = Color.green.scaleAlpha(0.5);
-	const Z_COLOR = Color.blue.scaleAlpha(0.5);
-	const markerLength = 1;
-
-	const cross = new VertexBuilder();
-
-	if (targetOrientation) 
-		cross
-		.append(target.clone().add(Vector3.new(0, 0, 0)), X_COLOR)
-		.append(target.clone().add(Vector3.new(markerLength, 0, 0).rotate(targetOrientation)), X_COLOR)
-		.append(target.clone().add(Vector3.new(0, 0, 0)), Y_COLOR)
-		.append(target.clone().add(Vector3.new(0, markerLength, 0).rotate(targetOrientation)), Y_COLOR)
-		.append(target.clone().add(Vector3.new(0, 0, 0)), Z_COLOR)
-		.append(target.clone().add(Vector3.new(0, 0, markerLength).rotate(targetOrientation)), Z_COLOR);
-
-	const ball = new VertexBuilder()
-		.append(target, TARGET_COLOR);
-
-	targetAxesMesh.geometry.setVertexData(cross.build());
-	targetAxesMesh.geometry.setIndexData(incrementingIndices(cross.builder.length / layout.stride));
-
-	targetPointMesh.geometry.setVertexData(ball.build());
-	targetPointMesh.geometry.setIndexData(incrementingIndices(ball.builder.length / layout.stride));
-}
-
-function buildJointAxes(jointPositions: Vector3[]) {
-	const X_COLOR = Color.fromRGBA(255, 104, 104, 170);
-	const Y_COLOR = Color.fromRGBA(255, 196, 82, 190);
-	const Z_COLOR = Color.fromRGBA(116, 182, 255, 170);
-	
-	const builder = new VertexBuilder();
-
+	// joint axes
 	for (let index = 0; index < jointPositions.length; index++) {
 		const position = jointPositions[index]!;
 		const rotation = jointRotationAt(index);
-		const scale = index === jointPositions.length - 1 ? 0.26 : 0.34;
-		const worldX = rotation.rotateVector(Vector3.new(1, 0, 0)).multiply(scale);
-		const worldY = rotation.rotateVector(Vector3.new(0, 1, 0)).multiply(scale * 1.1);
-		const worldZ = rotation.rotateVector(Vector3.new(0, 0, 1)).multiply(scale);
-
-		builder.append(position, X_COLOR);
-		builder.append(position.clone().add(worldX), X_COLOR);
-		builder.append(position, Y_COLOR);
-		builder.append(position.clone().add(worldY), Y_COLOR);
-		builder.append(position, Z_COLOR);
-		builder.append(position.clone().add(worldZ), Z_COLOR);
+		allLines.appendBuffer(buildAxes(position, rotation, 0.3).build());
 	}
 
-	return builder;
+	// target axes
+	if (target.orientation) {
+		allLines.appendBuffer(buildAxes(target.position, target.orientation, 0.5).build());
+	}
+
+	lineMesh.geometry.setVertexData(allLines.build());
+	lineMesh.geometry.setIndexData(incrementingIndices(allLines.builder.length / layout.stride));
+	
+	jointMesh.geometry.setVertexData(jointBuilder.build());
+	jointMesh.geometry.setIndexData(incrementingIndices(jointBuilder.builder.length / layout.stride));
+
+	const TARGET_COLOR = targetReached ? Color.green : Color.red;
+
+	const ball = new VertexBuilder().append(target.position, TARGET_COLOR);
+	targetMesh.geometry.setVertexData(ball.build());
+	targetMesh.geometry.setIndexData(incrementingIndices(ball.builder.length / layout.stride));
 }
 
 function buildConstraintGuides(jointPositions: Vector3[]) {
@@ -389,10 +351,6 @@ function buildConstraintGuides(jointPositions: Vector3[]) {
 				buildSwingTwistGuide(
 					joint,
 					segment,
-					segment.constraint.maxSwing,
-					segment.constraint.minTwist,
-					segment.constraint.maxTwist,
-					segment.constraint.twistOrigin,
 					parentRotation,
 					jointRotationAt(index + 1)
 				).build()
@@ -401,12 +359,8 @@ function buildConstraintGuides(jointPositions: Vector3[]) {
 			builder.appendBuffer(
 				buildHingeGuide(
 					joint,
-					segment.length,
-					segment.constraint.minAngle,
-					segment.constraint.maxAngle,
+					segment,
 					parentRotation,
-					segment.constraint.axis,
-					segment.constraint.origin,
 				).build()
 			);
 		}
@@ -418,49 +372,75 @@ function buildConstraintGuides(jointPositions: Vector3[]) {
 function buildSwingTwistGuide(
 	joint: Vector3,
 	segment: IKChainSegment3D,
-	maxSwingRadians: number,
-	minTwistRadians: number,
-	maxTwistRadians: number,
-	referenceUpLocal: Vector3,
 	parentRotation: Quaternion,
 	jointRotation: Quaternion,
 ) {
-	const builder = buildCone(joint, segment.length * .3, maxSwingRadians, parentRotation);
+	const constraint = segment.constraint as IKSwingTwistConstraint3D;
+
+	const builder = buildCone(joint, segment.length * .3, constraint.maxSwing, parentRotation);
 
 	const axisWorld = jointRotation.rotateVector(Vector3.new(0, 1, 0)).normalize() ?? Vector3.new(0, 1, 0);
 	const swingDirection = parentRotation.clone().invert()?.rotateVector(axisWorld) ?? Vector3.new(0, 1, 0);
 	const swingRotation = Quaternion.fromTo(Vector3.new(0, 1, 0), swingDirection, Vector3.new(1, 0, 0));
-	const referenceUp = parentRotation.clone().multiply(swingRotation).rotateVector(referenceUpLocal);
+	const twistBase = parentRotation.clone().multiply(swingRotation).rotateVector(constraint.twistBase);
 	const ringCenter = joint.clone().add(axisWorld.clone().multiply(segment.length * .8));
 	const radius = .2;
 	const liveLength = radius * 1.5;
 	
-	const liveColor = Color.fromRGBA(255, 99, 218, 255);
-	const ringColor = liveColor.scaleAlpha(.5);
+	const twistIndicatorColor = Color.fromRGBA(255, 99, 218, 255);
+	const twistGuideColor = twistIndicatorColor.scaleAlpha(.5);
 
-	for (let step = 0; step < 10; step++) {
-		const angleA = minTwistRadians + ((maxTwistRadians - minTwistRadians) * step) / 10;
-		const angleB = minTwistRadians + ((maxTwistRadians - minTwistRadians) * (step + 1)) / 10;
-		const pointA = ringCenter.clone().add(referenceUp.clone().rotateAround(axisWorld, angleA).multiply(radius));
-		const pointB = ringCenter.clone().add(referenceUp.clone().rotateAround(axisWorld, angleB).multiply(radius));
-		builder.append(pointA, ringColor);
-		builder.append(pointB, ringColor);
+	builder.appendBuffer(buildCircleSegment({
+		center: ringCenter,
+		axis: axisWorld,
+		forward: twistBase,
+		radius,
+		minAngle: constraint.minTwist,
+		maxAngle: constraint.maxTwist,
+		steps: 10,
+		arcColor: twistGuideColor,
+		spokeColor: twistGuideColor.scaleAlpha(0.85),
+	}).build());
+
+	const twist = extractTwistRadians(jointRotation, parentRotation, swingRotation, constraint.twistBase, Vector3.new(0, 1, 0));
+
+
+	const livePoint = ringCenter.clone().add(twistBase.clone().rotateAround(axisWorld, twist).multiply(liveLength));
+	builder.append(ringCenter, twistIndicatorColor);
+	builder.append(livePoint, twistIndicatorColor);
+
+	return builder;
+}
+
+function buildCircleSegment(options: {
+	center: Vector3;
+	axis: Vector3;
+	forward: Vector3;
+	radius: number;
+	minAngle: number;
+	maxAngle: number;
+	steps: number;
+	arcColor: Color;
+	spokeColor?: Color;
+}) {
+	const spokeColor = options.spokeColor ?? options.arcColor;
+	
+	const builder = new VertexBuilder();
+
+	for (let step = 0; step < options.steps; step++) {
+		const angleA = options.minAngle + ((options.maxAngle - options.minAngle) * step) / options.steps;
+		const angleB = options.minAngle + ((options.maxAngle - options.minAngle) * (step + 1)) / options.steps;
+		const pointA = options.center.clone().add(options.forward.clone().rotateAround(options.axis, angleA).multiply(options.radius));
+		const pointB = options.center.clone().add(options.forward.clone().rotateAround(options.axis, angleB).multiply(options.radius));
+		builder.append(pointA, options.arcColor);
+		builder.append(pointB, options.arcColor);
 	}
 
-	for (const angle of [minTwistRadians, maxTwistRadians]) {
-		const spokePoint = ringCenter.clone().add(referenceUp.clone().rotateAround(axisWorld, angle).multiply(radius));
-		builder.append(ringCenter, ringColor.scaleAlpha(0.85));
-		builder.append(spokePoint, ringColor.scaleAlpha(0.85));
+	for (const angle of [options.minAngle, options.maxAngle]) {
+		const spokePoint = options.center.clone().add(options.forward.clone().rotateAround(options.axis, angle).multiply(options.radius));
+		builder.append(options.center, spokeColor);
+		builder.append(spokePoint, spokeColor);
 	}
-
-	const constraint = segment.constraint as IKSwingTwistConstraint3D;
-
-	const twist = extractTwistRadians(jointRotation, parentRotation, swingRotation, constraint.twistOrigin, Vector3.new(0, 1, 0));
-
-
-	const livePoint = ringCenter.clone().add(referenceUp.clone().rotateAround(axisWorld, twist).multiply(liveLength));
-	builder.append(ringCenter, liveColor);
-	builder.append(livePoint, liveColor);
 
 	return builder;
 }
@@ -503,37 +483,27 @@ function buildCone(position: Vector3, length: number, radians: number, rotation:
 
 function buildHingeGuide(
 	joint: Vector3,
-	length: number,
-	minAngleRadians: number,
-	maxAngleRadians: number,
+	segment: IKChainSegment3D,
 	parentRotation: Quaternion,
-	axisLocal: Vector3,
-	originLocal: Vector3,
 ) {
-	const arcColor = Color.fromRGBA(121, 184, 255, 130);
+	const color = Color.fromRGBA(121, 184, 255, 130);
+
+	const constraint = segment.constraint as IKHingeConstraint3D;
 	
-	const axisWorld = parentRotation.rotateVector(axisLocal).normalize()!;
-	const referenceWorld = parentRotation.rotateVector(originLocal).normalize()!;
-	const radius = length * 0.3;
+	const axisWorld = constraint.axis.clone().rotate(parentRotation);
+	const referenceWorld = constraint.origin.clone().rotate(parentRotation);
+	const radius = segment.length * 0.3;
 
-	const builder = new VertexBuilder();
-
-	for (let step = 0; step < 18; step++) {
-		const angleA = minAngleRadians + ((maxAngleRadians - minAngleRadians) * step) / 18;
-		const angleB = minAngleRadians + ((maxAngleRadians - minAngleRadians) * (step + 1)) / 18;
-		const pointA = joint.clone().add(referenceWorld.clone().rotateAround(axisWorld, angleA).multiply(radius));
-		const pointB = joint.clone().add(referenceWorld.clone().rotateAround(axisWorld, angleB).multiply(radius));
-		builder.append(pointA, arcColor);
-		builder.append(pointB, arcColor);
-	}
-
-	for (const angle of [minAngleRadians, maxAngleRadians]) {
-		const spokePoint = joint.clone().add(referenceWorld.clone().rotateAround(axisWorld, angle).multiply(radius));
-		builder.append(joint, arcColor);
-		builder.append(spokePoint, arcColor);
-	}
-
-	return builder;
+	return buildCircleSegment({
+		center: joint,
+		axis: axisWorld,
+		forward: referenceWorld,
+		radius,
+		minAngle: constraint.minAngle,
+		maxAngle: constraint.maxAngle,
+		steps: 18,
+		arcColor: color,
+	});
 }
 
 function jointRotationAt(index: number) {
