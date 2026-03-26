@@ -112,7 +112,7 @@ export type IKJointPose3D = IKSwingTwistJointState3D | IKHingeJointState3D;
 
 export interface IKChainSegment3D {
 	length: number;
-	parentJoint: IKJoint3D;
+	joint: IKJoint3D;
 }
 
 export interface IKChain3DOptions {
@@ -153,15 +153,15 @@ export class IKChain3D {
 			options.position.clone(),
 			options.rotation.clone(),
 			this.segments.map(segment => {
-				if (segment.parentJoint instanceof IKHingeJoint3D) {
+				if (segment.joint instanceof IKHingeJoint3D) {
 					return new IKHingeJointState3D();
 				}
 
-				if (segment.parentJoint instanceof IKSwingTwistJoint3D) {
+				if (segment.joint instanceof IKSwingTwistJoint3D) {
 					return new IKSwingTwistJointState3D();
 				}
 
-				assertNever(segment.parentJoint);
+				assertNever(segment.joint);
 			}),
 		);
 	}
@@ -183,10 +183,10 @@ export class IKChain3D {
 			const segment = this.segments[index]!;
 			const jointState = pose.jointPoses[index]!;
 
-			if (segment.parentJoint instanceof IKHingeJoint3D && jointState instanceof IKHingeJointState3D) {
-				cursorRotation.multiply(segment.parentJoint.rotation(jointState)).normalize()!;
-			} else if (segment.parentJoint instanceof IKSwingTwistJoint3D && jointState instanceof IKSwingTwistJointState3D) {
-				cursorRotation.multiply(segment.parentJoint.rotation(jointState)).normalize()!;
+			if (segment.joint instanceof IKHingeJoint3D && jointState instanceof IKHingeJointState3D) {
+				cursorRotation.multiply(segment.joint.rotation(jointState)).normalize()!;
+			} else if (segment.joint instanceof IKSwingTwistJoint3D && jointState instanceof IKSwingTwistJointState3D) {
+				cursorRotation.multiply(segment.joint.rotation(jointState)).normalize()!;
 			} else {
 				throw new Error("IKChain3D.getWorld requires matching topology.");
 			}

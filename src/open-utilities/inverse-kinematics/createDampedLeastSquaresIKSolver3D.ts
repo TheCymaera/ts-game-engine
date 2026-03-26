@@ -135,7 +135,7 @@ function createParameterDescriptors(jointStates: IKJointPose3D[]) {
 }
 
 function perturbParameter(chain: IKChain3D, pose: IKChainPose3D, descriptor: JointParameterDescriptor, delta: number) {
-	const joint = chain.segments[descriptor.jointIndex]!.parentJoint;
+	const joint = chain.segments[descriptor.jointIndex]!.joint;
 	const jointPose = pose.jointPoses[descriptor.jointIndex]!;
 
 	if (jointPose instanceof IKHingeJointState3D && joint instanceof IKHingeJoint3D) {
@@ -173,7 +173,7 @@ function perturbParameter(chain: IKChain3D, pose: IKChainPose3D, descriptor: Joi
 function applyStep(chain: IKChain3D, pose: IKChainPose3D, descriptors: JointParameterDescriptor[], step: number[], scale: number) {
 	for (let index = 0; index < descriptors.length; index++) {
 		const descriptor = descriptors[index]!;
-		const joint = chain.segments[descriptor.jointIndex]!.parentJoint;
+		const joint = chain.segments[descriptor.jointIndex]!.joint;
 		const jointPose = pose.jointPoses[descriptor.jointIndex]!;
 		const delta = step[index]! * scale;
 

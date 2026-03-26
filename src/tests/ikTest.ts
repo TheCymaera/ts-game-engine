@@ -21,11 +21,11 @@ renderer.gl.clearColor(0.03, 0.04, 0.07, 1);
 
 const chain = IKChain3D.new({
 	segments: [
-		{ length: 0.80, parentJoint: IKSwingTwistJoint3D.new({ referenceAxis: Vector3.new(0, 0, 1), maxSwing: 0.2 * Math.PI, minTwist: -1 * Math.PI, maxTwist: 1 * Math.PI }) },
-		{ length: 1.05, parentJoint: IKHingeJoint3D.new({ axis: Vector3.new(1, 0, 0), reference: Vector3.new(0, 1, 0), minAngle: -0.3 * Math.PI, maxAngle: 0.3 * Math.PI }) },
-		{ length: 0.95, parentJoint: IKHingeJoint3D.new({ axis: Vector3.new(1, 0, 0), reference: Vector3.new(0, 1, 0), minAngle: -0.3 * Math.PI, maxAngle: 0.3 * Math.PI }) },
-		{ length: 0.80, parentJoint: IKSwingTwistJoint3D.new({ referenceAxis: Vector3.new(0, 0, 1), maxSwing: 0.22 * Math.PI, minTwist: -0.4 * Math.PI, maxTwist: 0.4 * Math.PI }) },
-		{ length: 0.65, parentJoint: IKSwingTwistJoint3D.new({ referenceAxis: Vector3.new(0, 0, 1), maxSwing: 0.25 * Math.PI, minTwist: -0.4 * Math.PI, maxTwist: 0.4 * Math.PI }) },
+		{ length: 0.80, joint: IKSwingTwistJoint3D.new({ referenceAxis: Vector3.new(0, 0, 1), maxSwing: 0.2 * Math.PI, minTwist: -1 * Math.PI, maxTwist: 1 * Math.PI }) },
+		{ length: 1.05, joint: IKHingeJoint3D.new({ axis: Vector3.new(1, 0, 0), reference: Vector3.new(0, 1, 0), minAngle: -0.3 * Math.PI, maxAngle: 0.3 * Math.PI }) },
+		{ length: 0.95, joint: IKHingeJoint3D.new({ axis: Vector3.new(1, 0, 0), reference: Vector3.new(0, 1, 0), minAngle: -0.3 * Math.PI, maxAngle: 0.3 * Math.PI }) },
+		{ length: 0.80, joint: IKSwingTwistJoint3D.new({ referenceAxis: Vector3.new(0, 0, 1), maxSwing: 0.22 * Math.PI, minTwist: -0.4 * Math.PI, maxTwist: 0.4 * Math.PI }) },
+		{ length: 0.65, joint: IKSwingTwistJoint3D.new({ referenceAxis: Vector3.new(0, 0, 1), maxSwing: 0.25 * Math.PI, minTwist: -0.4 * Math.PI, maxTwist: 0.4 * Math.PI }) },
 	],
 });
 
@@ -348,7 +348,7 @@ function buildConstraintGuides(chain: IKChain3D, pose: IKChainPose3D) {
 		const parent = joints[index]!;
 		const child = joints[index + 1]!;
 
-		if (segment.parentJoint instanceof IKSwingTwistJoint3D && jointPose instanceof IKSwingTwistJointState3D) {
+		if (segment.joint instanceof IKSwingTwistJoint3D && jointPose instanceof IKSwingTwistJointState3D) {
 			builder.appendBuffer(
 				buildSwingTwistGuide(
 					parent.position,
@@ -361,7 +361,7 @@ function buildConstraintGuides(chain: IKChain3D, pose: IKChainPose3D) {
 			continue;
 		}
 
-		if (segment.parentJoint instanceof IKHingeJoint3D) {
+		if (segment.joint instanceof IKHingeJoint3D) {
 			builder.appendBuffer(
 				buildHingeGuide(
 					parent.position,
@@ -372,7 +372,7 @@ function buildConstraintGuides(chain: IKChain3D, pose: IKChainPose3D) {
 			continue;
 		}
 
-		throw new Error(`Unknown joint type at segment ${index}: ${segment.parentJoint.constructor.name}`);
+		throw new Error(`Unknown joint type at segment ${index}: ${segment.joint.constructor.name}`);
 	}
 
 	return builder;
@@ -385,7 +385,7 @@ function buildSwingTwistGuide(
 	parentRotation: Quaternion,
 	jointRotation: Quaternion,
 ) {
-	const constraint = segment.parentJoint as IKSwingTwistJoint3D;
+	const constraint = segment.joint as IKSwingTwistJoint3D;
 
 	const builder = buildCone(jointPosition, segment.length * .3, constraint.maxSwing, parentRotation);
 
@@ -495,7 +495,7 @@ function buildHingeGuide(
 ) {
 	const color = Color.fromRGBA(121, 184, 255, 130);
 
-	const constraint = segment.parentJoint as IKHingeJoint3D;
+	const constraint = segment.joint as IKHingeJoint3D;
 	
 	const axisWorld = constraint.axis.clone().rotate(parentRotation);
 	const referenceWorld = constraint.reference.clone().rotate(parentRotation);
