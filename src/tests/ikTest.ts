@@ -41,6 +41,9 @@ const targetRadiusMax = totalReach * 0.8;
 const targetOrigin = rootPosition.clone().add(Vector3.new(0, .8, 0));
 const random = Random.default;
 
+const jointSize = 0.015;
+const targetSize = 0.02;
+
 const primitiveShader = new ShaderModule({
 	vertexShader: `#version 300 es
 		uniform mat4 uModelViewProjection;
@@ -93,7 +96,7 @@ const lineMaterial = new Material({
 const jointMaterial = new Material({
 	shader: primitiveShader,
 	uniforms: {
-		uPointSize: new ShaderUniformFloat(12),
+		uPointSize: new ShaderUniformFloat(0),
 		uRoundPoints: new ShaderUniformInt(1),
 	},
 });
@@ -101,7 +104,7 @@ const jointMaterial = new Material({
 const targetMaterial = new Material({
 	shader: primitiveShader,
 	uniforms: {
-		uPointSize: new ShaderUniformFloat(18),
+		uPointSize: new ShaderUniformFloat(0),
 		uRoundPoints: new ShaderUniformInt(1),
 	},
 });
@@ -240,6 +243,14 @@ function updateCanvasDimensions() {
 		near: 0.1,
 		far: 100,
 	}));
+
+
+	// update point size based on resolution
+	const scaleFactor = Math.min(width, height);
+	jointMaterial.uniforms.uPointSize.value = jointSize * scaleFactor;
+	targetMaterial.uniforms.uPointSize.value = targetSize * scaleFactor;
+	jointMaterial.needsUniformUpdate = true;
+	targetMaterial.needsUniformUpdate = true;
 }
 
 const LINE_COLOR = (index: number, total: number) => {
