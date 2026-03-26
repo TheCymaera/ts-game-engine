@@ -8,6 +8,8 @@
 	"devDependencies": {
 		"@total-typescript/ts-reset": "^0.6.1",
 		"@types/wicg-file-system-access": "^2023.10.7",
+		"oxlint": "^1.57.0",
+		"oxlint-tsgolint": "^0.17.4",
 		"vite": "^8.0.1"
 	}
 }
