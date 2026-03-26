@@ -36,7 +36,9 @@ const chain = IKChain3D.new({
 Object.assign(globalThis, { chain });
 
 const totalReach = chain.totalLength;
-const targetRadius = totalReach * 0.88;
+const targetRadiusMin = totalReach * 0.2;
+const targetRadiusMax = totalReach * 0.8;
+const targetOrigin = rootPosition.clone().add(Vector3.new(0, .8, 0));
 const random = Random.default;
 
 const primitiveShader = new ShaderModule({
@@ -156,9 +158,10 @@ const RETARGET_INTERVAL = () => Duration.seconds(random.nextFloat(2.2, 4.2));
 let retargetTimer = RETARGET_INTERVAL();
 let orbitAngle = 0;
 
+
 function randomTarget(): IKTarget3D {
 	return new IKTarget3D(
-		rootPosition.clone().add(randomVectorInRadius(targetRadius)),
+		randomVectorInRadius(targetRadiusMin, targetRadiusMax).add(targetOrigin),
 		undefined, //Quaternion.fromAxisAngle(Vector3.new(0, 1, 0), random.nextFloat(0, Math.PI * 2)),
 	);
 }
@@ -503,11 +506,11 @@ function jointRotationAt(index: number) {
 	return chain.joints[chain.joints.length - 1]!.rotation;
 }
 
-function randomVectorInRadius(radius: number) {
+function randomVectorInRadius(min: number, max: number) {
 	const theta = random.nextFloat(0, Math.PI * 2);
 	const vertical = random.nextFloat(-1, 1);
 	const horizontal = Math.sqrt(1 - vertical * vertical);
-	const length = Math.cbrt(random.nextFloat()) * radius;
+	const length = Math.cbrt(random.nextFloat()) * (max - min) + min;
 
 	return Vector3.new(
 		horizontal * Math.cos(theta),

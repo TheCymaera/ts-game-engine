@@ -204,7 +204,7 @@ export class ShaderUniformMatrix4 implements ShaderUniform {
 	constructor(public value: Matrix4) {}
 
 	bindGl(gl: WebGL2RenderingContext, location: WebGLUniformLocation) {
-		gl.uniformMatrix4fv(location, false, this.value.toFloat32Array());
+		gl.uniformMatrix4fv(location, false, this.value.toColumnMajor(Float32Array));
 	}
 }
 
