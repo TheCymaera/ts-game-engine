@@ -2,7 +2,7 @@ import { coerceBetween } from "@open-utilities/maths/coerceBetween";
 import { Quaternion } from "@open-utilities/maths/Quaternion";
 import { DampedLeastSquaresOptions, DampedLeastSquaresMetrics, LeastSquaresProblem, solveDampedLeastSquares } from "@open-utilities/inverse-kinematics/solveDampedLeastSquares.js";
 import { Vector3 } from "@open-utilities/maths/Vector3";
-import { IKHingeJoint3D, IKChain3D, IKChainSegment3D, IKSwingTwistJoint3D } from "./IKChain3D.js";
+import { IKHingeJoint3D, IKChain3D, IKSwingTwistJoint3D, IKChainPose3D, IKHingeJointState3D, IKJointPose3D, IKSwingTwistJointState3D } from "./IKChain3D.js";
 import { IKSolver3D, IKTarget3D } from "./IKSolver.js";
 import { wrapRadians } from "@open-utilities/maths/wrapRadians.js";
 import { sumArray } from "@open-utilities/maths/sumArray.js";
@@ -39,21 +39,21 @@ export function createDampedLeastSquaresIKSolver3D(options: Partial<DampedLeastS
 		minStepScale: options.minStepScale ?? 1 / 64,
 	} satisfies DampedLeastSquaresSolverOptions;
 
-	return (chain: IKChain3D, target: IKTarget3D) => solve(chain, target, resolvedOptions);
+	return (chain: IKChain3D, pose: IKChainPose3D, target: IKTarget3D) => solve(chain, pose, target, resolvedOptions);
 }
 
-function solve(chain: IKChain3D, target: IKTarget3D, options: DampedLeastSquaresSolverOptions) {
-	const problem: LeastSquaresProblem<IKChain3D, JointParameterDescriptor, SolverMetrics> = {
-		cloneState: state => state.clone(),
-		copyState: (targetChain, sourceChain) => targetChain.copyPose(sourceChain),
-		evaluateState: state => evaluateState(state, target, options),
+function solve(chain: IKChain3D, pose: IKChainPose3D, target: IKTarget3D, options: DampedLeastSquaresSolverOptions) {
+	const problem: LeastSquaresProblem<IKChainPose3D, JointParameterDescriptor, SolverMetrics> = {
+		cloneState: pose => pose.clone(),
+		copyState: (targetPose, sourcePose) => targetPose.copy(sourcePose),
+		evaluateState: state => evaluateState(chain, state, target, options),
 		isSolved: metrics => isSolved(metrics, options, target),
-		listParameters: state => createParameterDescriptors(state.segments),
-		perturbParameter,
-		applyStep,
+		listParameters: state => createParameterDescriptors(state.jointPoses),
+		perturbParameter: (state, parameter, delta) => perturbParameter(chain, state, parameter, delta),
+		applyStep: (state, parameters, step, scale) => applyStep(chain, state, parameters, step, scale),
 	};
 
-	solveDampedLeastSquares(chain, problem, options);
+	solveDampedLeastSquares(pose, problem, options);
 }
 
 function isSolved(metrics: SolverMetrics, options: DampedLeastSquaresSolverOptions, target: IKTarget3D) {
@@ -68,8 +68,8 @@ function isSolved(metrics: SolverMetrics, options: DampedLeastSquaresSolverOptio
 	return true;
 }
 
-function evaluateState(chain: IKChain3D, target: IKTarget3D, options: DampedLeastSquaresOptions): SolverMetrics {
-	const worldJoints = chain.joints;
+function evaluateState(chain: IKChain3D, pose: IKChainPose3D, target: IKTarget3D, options: DampedLeastSquaresOptions): SolverMetrics {
+	const worldJoints = chain.getWorldJoints(pose);
 	const endEffector = worldJoints[worldJoints.length - 1]!;
 	const positionErrorVector = target.position.clone().subtract(endEffector.position);
 	const positionError = positionErrorVector.length();
@@ -115,12 +115,12 @@ function rotationErrorVector(currentRotation: Quaternion, targetRotation: Quater
 	return Vector3.new(delta.x / sine, delta.y / sine, delta.z / sine).multiply(angle);
 }
 
-function createParameterDescriptors(segments: IKChainSegment3D[]) {
+function createParameterDescriptors(jointStates: IKJointPose3D[]) {
 	const descriptors: JointParameterDescriptor[] = [];
 
-	for (let index = 0; index < segments.length; index++) {
-		const jointState = segments[index]!.joint;
-		if (jointState instanceof IKHingeJoint3D) {
+	for (let index = 0; index < jointStates.length; index++) {
+		const jointState = jointStates[index]!;
+		if (jointState instanceof IKHingeJointState3D) {
 			descriptors.push({ jointIndex: index, parameter: "angle" });
 		} else {
 			descriptors.push(
@@ -134,62 +134,71 @@ function createParameterDescriptors(segments: IKChainSegment3D[]) {
 	return descriptors;
 }
 
-function perturbParameter(state: IKChain3D, descriptor: JointParameterDescriptor, delta: number) {
-	const segment = state.segments[descriptor.jointIndex]!;
+function perturbParameter(chain: IKChain3D, pose: IKChainPose3D, descriptor: JointParameterDescriptor, delta: number) {
+	const joint = chain.segments[descriptor.jointIndex]!.parentJoint;
+	const jointPose = pose.jointPoses[descriptor.jointIndex]!;
 
-	if (segment.joint instanceof IKHingeJoint3D) {
-		const constraint = segment.joint as IKHingeJoint3D;
-		const nextAngle = coerceBetween(segment.joint.angle + delta, constraint.minAngle, constraint.maxAngle);
-		const appliedDelta = nextAngle - segment.joint.angle;
-		segment.joint.angle = nextAngle;
+	if (jointPose instanceof IKHingeJointState3D && joint instanceof IKHingeJoint3D) {
+		const constraint = joint as IKHingeJoint3D;
+		const nextAngle = coerceBetween(jointPose.angle + delta, constraint.minAngle, constraint.maxAngle);
+		const appliedDelta = nextAngle - jointPose.angle;
+		jointPose.angle = nextAngle;
 		return appliedDelta;
 	}
 
-	if (descriptor.parameter === "azimuth") {
-		segment.joint.azimuth = wrapRadians(segment.joint.azimuth + delta);
-		return delta;
-	}
-
-	if (descriptor.parameter === "swing") {
-		const constraint = segment.joint as IKSwingTwistJoint3D;
-		const nextSwing = coerceBetween(segment.joint.swing + delta, 0, constraint.maxSwing);
-		const appliedDelta = nextSwing - segment.joint.swing;
-		segment.joint.swing = nextSwing;
-		return appliedDelta;
-	}
-
-	const constraint = segment.joint as IKSwingTwistJoint3D;
-	const nextTwist = coerceBetween(segment.joint.twist + delta, constraint.minTwist, constraint.maxTwist);
-	const appliedDelta = nextTwist - segment.joint.twist;
-	segment.joint.twist = nextTwist;
-	return appliedDelta;
-}
-
-function applyStep(state: IKChain3D, descriptors: JointParameterDescriptor[], step: number[], scale: number) {
-	for (let index = 0; index < descriptors.length; index++) {
-		const descriptor = descriptors[index]!;
-		const segment = state.segments[descriptor.jointIndex]!;
-		const delta = step[index]! * scale;
-
-		if (segment.joint instanceof IKHingeJoint3D) {
-			const constraint = segment.joint as IKHingeJoint3D;
-			segment.joint.angle = coerceBetween(segment.joint.angle + delta, constraint.minAngle, constraint.maxAngle);
-			continue;
-		}
-
+	if (jointPose instanceof IKSwingTwistJointState3D && joint instanceof IKSwingTwistJoint3D) {
 		if (descriptor.parameter === "azimuth") {
-			segment.joint.azimuth = wrapRadians(segment.joint.azimuth + delta);
-			continue;
+			jointPose.azimuth = wrapRadians(jointPose.azimuth + delta);
+			return delta;
 		}
 
 		if (descriptor.parameter === "swing") {
-			const constraint = segment.joint as IKSwingTwistJoint3D;
-			segment.joint.swing = coerceBetween(segment.joint.swing + delta, 0, constraint.maxSwing);
+			const nextSwing = coerceBetween(jointPose.swing + delta, 0, joint.maxSwing);
+			const appliedDelta = nextSwing - jointPose.swing;
+			jointPose.swing = nextSwing;
+			return appliedDelta;
+		}
+
+		if (descriptor.parameter === "twist") {
+			const nextTwist = coerceBetween(jointPose.twist + delta, joint.minTwist, joint.maxTwist);
+			const appliedDelta = nextTwist - jointPose.twist;
+			jointPose.twist = nextTwist;
+			return appliedDelta;
+		}
+	}
+
+	throw new Error("IKSolver requires matching topology.");
+}
+
+function applyStep(chain: IKChain3D, pose: IKChainPose3D, descriptors: JointParameterDescriptor[], step: number[], scale: number) {
+	for (let index = 0; index < descriptors.length; index++) {
+		const descriptor = descriptors[index]!;
+		const joint = chain.segments[descriptor.jointIndex]!.parentJoint;
+		const jointPose = pose.jointPoses[descriptor.jointIndex]!;
+		const delta = step[index]! * scale;
+
+		if (joint instanceof IKHingeJoint3D && jointPose instanceof IKHingeJointState3D) {
+			const constraint = joint as IKHingeJoint3D;
+			jointPose.angle = coerceBetween(jointPose.angle + delta, constraint.minAngle, constraint.maxAngle);
 			continue;
 		}
 
-		const constraint = segment.joint as IKSwingTwistJoint3D;
-		segment.joint.twist = coerceBetween(segment.joint.twist + delta, constraint.minTwist, constraint.maxTwist);
+		if (joint instanceof IKSwingTwistJoint3D && jointPose instanceof IKSwingTwistJointState3D) {
+			if (descriptor.parameter === "azimuth") {
+				jointPose.azimuth = wrapRadians(jointPose.azimuth + delta);
+				continue;
+			}
+
+			if (descriptor.parameter === "swing") {
+				jointPose.swing = coerceBetween(jointPose.swing + delta, 0, joint.maxSwing);
+				continue;
+			}
+
+			if (descriptor.parameter === "twist") {
+				jointPose.twist = coerceBetween(jointPose.twist + delta, joint.minTwist, joint.maxTwist);
+				continue;
+			}
+		}
 	}
 }
 

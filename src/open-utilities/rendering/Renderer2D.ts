@@ -104,6 +104,22 @@ export class Renderer2D {
 		});
 	}
 
+	/**
+	 * @experimental
+	 */
+	drawText({ text, zIndex = 0, color }: { text: string, color: Color, zIndex?: number }) {
+		const transform = Matrix4.identity()
+			.scale(Vector3.new(1, -1, 1).multiply(1/10));
+		
+		this.withTransform(transform, () => {
+			this.#scheduleDraw(zIndex, () =>{
+				this.ctx.fillStyle = color.toString();
+				this.ctx.font = "14px sans-serif";
+				this.ctx.fillText(text, 0, 0);//position.x, position.y);
+			});
+		});
+	}
+
 	drawPath({ path, style, zIndex = 0 }: { path: Path, style: ShapeStyle, zIndex?: number }) {
 		this.#scheduleDraw(zIndex, () =>{
 			this.#setShapeStyle(style);

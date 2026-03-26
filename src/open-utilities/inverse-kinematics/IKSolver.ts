@@ -1,7 +1,6 @@
 import { Quaternion } from "@open-utilities/maths/Quaternion";
 import { Vector3 } from "@open-utilities/maths/Vector3";
-import { IKChain3D } from "./IKChain3D";
-
+import { IKChain3D, IKChainPose3D } from "./IKChain3D";
 
 export class IKTarget3D {
 	constructor(
@@ -22,4 +21,4 @@ export class IKTarget3D {
 	}
 }
 
-export type IKSolver3D = (chain: IKChain3D, target: IKTarget3D) => void;
+export type IKSolver3D = (chain: IKChain3D, pose: IKChainPose3D, target: IKTarget3D) => void;
