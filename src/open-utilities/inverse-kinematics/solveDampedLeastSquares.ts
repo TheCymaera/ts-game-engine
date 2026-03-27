@@ -4,29 +4,25 @@ const EPSILON = 0.000001;
 
 export interface DampedLeastSquaresOptions {
 	iterations: number;
-	tolerance: number;
-	orientationTolerance: number;
 	damping: number;
 	minDamping: number;
 	maxDamping: number;
 	dampingScale: number;
 	finiteDifference: number;
 	maxStep: number;
-	positionWeight: number;
-	orientationWeight: number;
 	minStepScale: number;
 }
 
 export interface DampedLeastSquaresMetrics {
 	errorVector: number[];
 	score: number;
+	isSolved: boolean;
 }
 
 export interface LeastSquaresProblem<State, Parameter, Metrics extends DampedLeastSquaresMetrics> {
 	cloneState(state: State): State;
 	copyState(target: State, source: State): void;
 	evaluateState(state: State): Metrics;
-	isSolved(metrics: Metrics): boolean;
 	listParameters(state: State): Parameter[];
 	perturbParameter(state: State, parameter: Parameter, delta: number): number;
 	applyStep(state: State, parameters: Parameter[], step: number[], scale: number): void;
@@ -43,7 +39,7 @@ export function solveDampedLeastSquares<State, Parameter, Metrics extends Damped
 	let damping = coerceBetween(options.damping, options.minDamping, options.maxDamping);
 
 	for (let iteration = 0; iteration < options.iterations; iteration++) {
-		if (problem.isSolved(currentMetrics)) {
+		if (currentMetrics.isSolved) {
 			break;
 		}
 

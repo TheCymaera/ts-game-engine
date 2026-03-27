@@ -129,6 +129,18 @@ export class Quaternion {
 		).normalize() ?? this.copy(target);
 	}
 
+	dot(other: Quaternion) {
+		return this.x * other.x + this.y * other.y + this.z * other.z + this.w * other.w;
+	}
+
+	angleTo(other: Quaternion) {
+		const a = this.clone().normalize() ?? Quaternion.identity();
+		const b = other.clone().normalize() ?? Quaternion.identity();
+		
+		const dotProduct = coerceBetween(a.dot(b), -1, 1);
+		return Math.acos(2 * dotProduct * dotProduct - 1);
+	}
+
 	static identity() {
 		return Quaternion.new(0, 0, 0, 1);
 	}

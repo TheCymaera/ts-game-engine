@@ -1,6 +1,5 @@
 import { ECS, Entity, type ECSUpdateContext } from "@open-utilities/ecs/ECS";
 import { Keyboard } from "@open-utilities/io/Keyboard";
-import { Rect } from "@open-utilities/maths/Rect";
 import { Vector2 } from "@open-utilities/maths/Vector2";
 import { bulletBundle } from "./bullet";
 import { PhysicsBody } from "@physics2D/physics2D";
@@ -9,7 +8,6 @@ import { Transform2D } from "@plugins/spatialPlugin";
 import { inputMap, mouse } from "./resources";
 import { machineGun } from "./weapons";
 import { Gravity } from "./gravity";
-import { Circle } from "@open-utilities/maths/Circle";
 import { Capsule2D } from "@open-utilities/maths/Capsule2D";
 
 export function playerPlugin(app: ECS) {

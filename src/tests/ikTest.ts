@@ -2,6 +2,7 @@ import { Duration } from "@open-utilities/core/Duration";
 import { IKChain3D, IKChainSegment3D, IKSwingTwistJoint3D, IKHingeJoint3D, IKChainPose3D, IKSwingTwistJointState3D } from "@open-utilities/inverse-kinematics/IKChain3D";
 import { IKTarget3D } from "@open-utilities/inverse-kinematics/IKSolver";
 import { createDampedLeastSquaresIKSolver3D } from "@open-utilities/inverse-kinematics/createDampedLeastSquaresIKSolver3D";
+import { createIKEvaluator3D } from "@open-utilities/inverse-kinematics/ikEvaluator3D";
 import { Matrix4 } from "@open-utilities/maths/Matrix4";
 import { Quaternion } from "@open-utilities/maths/Quaternion";
 import { Random } from "@open-utilities/maths/Random";
@@ -39,11 +40,48 @@ Object.assign(globalThis, { chain });
 const totalReach = chain.totalLength;
 const targetRadiusMin = totalReach * 0.2;
 const targetRadiusMax = totalReach * 0.8;
-const targetOrigin = pose.position.clone().add(Vector3.new(0, .8, 0));
+const targetOrigin = pose.position.clone().add(Vector3.new(0, .7, 0));
+const groundTargetsOnly = false;
 const random = Random.default;
 
 const jointSize = 0.015;
 const targetSize = 0.02;
+
+const tolerance = 0.01;
+const evaluator = createIKEvaluator3D({
+	tolerance: tolerance
+});
+const solver = createDampedLeastSquaresIKSolver3D({
+	evaluator,
+});
+
+//const solver = (chain: IKChain3D, pose: IKChainPose3D, target: IKTarget3D) => {
+//	let bestPose = pose.clone();
+//	let bestEvaluation = evaluator(chain, bestPose, target);
+
+//	const random = Random.mulberry32(0);
+
+//	for (let pass = 0; pass < 1; pass++) {
+//		if (bestEvaluation.isSolved) {
+//			break;
+//		}
+
+//		const solvedPose = bestPose.clone();
+//		if (pass > 0) solvedPose.randomize(chain, random);
+		
+		
+//		childSolver(chain, solvedPose, target);
+
+//		const evaluation = evaluator(chain, solvedPose, target);
+
+//		if (evaluation.score < bestEvaluation.score) {
+//			bestPose = solvedPose;
+//			bestEvaluation = evaluation;
+//		}
+//	}
+
+//	pose.copy(bestPose);
+//}
 
 const primitiveShader = new ShaderModule({
 	vertexShader: `#version 300 es
@@ -164,20 +202,15 @@ let orbitAngle = 0;
 
 
 function randomTarget(): IKTarget3D {
-	return new IKTarget3D(
-		randomVectorInRadius(targetRadiusMin, targetRadiusMax).add(targetOrigin),
-		undefined, //Quaternion.fromAxisAngle(Vector3.new(0, 1, 0), random.nextFloat(0, Math.PI * 2)),
-	);
+	const position = randomVectorInRadius(targetRadiusMin, targetRadiusMax).add(targetOrigin);
+	if (groundTargetsOnly) position.y = 0;
+	const orientation = undefined; //Quaternion.fromAxisAngle(Vector3.new(0, 1, 0), random.nextFloat(0, Math.PI * 2))
+	
+	return new IKTarget3D(position, orientation);
 }
 
 let desiredTarget = randomTarget();
-let currentTarget = desiredTarget;
-
-
-const tolerance = 0.01;
-const solver = createDampedLeastSquaresIKSolver3D({
-	tolerance: tolerance,
-});
+const currentTarget = desiredTarget;
 
 AnimationFrameScheduler.periodic(({ elapsedTime }) => {
 	updateCanvasDimensions();
@@ -188,23 +221,25 @@ AnimationFrameScheduler.periodic(({ elapsedTime }) => {
 		retargetTimer = RETARGET_INTERVAL();
 	}
 
-	//const targetLerp = Infinity;
-	//const chainLerp = 2.5;
-
 	const targetLerp = 1.5;
 	const chainLerp = Infinity;
+	//const maxChainRotateDelta = 2;
 
 	currentTarget.lerp(desiredTarget, 1 - Math.exp(-elapsedTime.seconds * targetLerp));
 	
+
 	const solvedPose = pose.clone();
 	solver(chain, solvedPose, currentTarget);
-	
-	pose.lerp(solvedPose, 1 - Math.exp(-elapsedTime.seconds * chainLerp));
 
-	const effector = chain.getWorldJoints(pose).at(-1)!.position;
-	const error = effector.distanceTo(currentTarget.position);
+	pose.lerp(solvedPose, 1 - Math.exp(-elapsedTime.seconds * chainLerp));
+	//pose.rotateTowards(solvedPose, maxChainRotateDelta * elapsedTime.seconds);
+
+	const solvedEvaluation = evaluator(chain, pose, currentTarget);
+	const evaluation = evaluator(chain, pose, currentTarget);
+
+	const effector = chain.getWorldNodes(pose).at(-1)!.position;
 	
-	updateMeshes(chain, pose, currentTarget, error <= tolerance);
+	updateMeshes(chain, pose, currentTarget, evaluation.isSolved);
 	orbitAngle += elapsedTime.seconds * 0.22;
 
 	renderer.setViewTransform(Matrix4.lookAt({
@@ -222,7 +257,7 @@ AnimationFrameScheduler.periodic(({ elapsedTime }) => {
 	debugText.textContent = dedent`
 		target: ${currentTarget.position.toString()}
 		effector: ${effector.toString()}
-		error: ${error.toFixed(4)}
+		error: ${solvedEvaluation.positionError.toFixed(4)}
 		retarget in: ${Math.max(retargetTimer.seconds, 0).toFixed(2)}s
 	`;
 });
@@ -281,13 +316,13 @@ function buildAxes(position: Vector3, rotation: Quaternion, length: number) {
 
 function buildSegments(chain: IKChain3D, pose: IKChainPose3D) {
 	const builder = new VertexBuilder();
-	const jointPositions = chain.getWorldJoints(pose).map(joint => joint.position);
+	const nodes = chain.getWorldNodes(pose).map(joint => joint.position);
 
-	for (let index = 0; index < jointPositions.length - 1; index++) {
-		const start = jointPositions[index]!;
-		const end = jointPositions[index + 1]!;
+	for (let index = 0; index < nodes.length - 1; index++) {
+		const start = nodes[index]!;
+		const end = nodes[index + 1]!;
 
-		const color = LINE_COLOR(index, jointPositions.length - 1);
+		const color = LINE_COLOR(index, nodes.length - 1);
 		builder.append(start, color);
 		builder.append(end, color);
 	}
@@ -298,7 +333,7 @@ function buildSegments(chain: IKChain3D, pose: IKChainPose3D) {
 function updateMeshes(chain: IKChain3D, pose: IKChainPose3D, target: IKTarget3D, targetReached: boolean) {
 	const jointBuilder = new VertexBuilder();
 
-	const jointPositions = chain.getWorldJoints(pose).map(joint => joint.position);
+	const jointPositions = chain.getWorldNodes(pose).map(joint => joint.position);
 	
 	for (const [index, position] of jointPositions.entries()) {
 		jointBuilder.append(position, JOINT_COLOR(index, jointPositions.length));
@@ -313,7 +348,7 @@ function updateMeshes(chain: IKChain3D, pose: IKChainPose3D, target: IKTarget3D,
 	allLines.appendBuffer(buildConstraintGuides(chain, pose).build());
 
 	// joint axes
-	const joints = chain.getWorldJoints(pose);
+	const joints = chain.getWorldNodes(pose);
 	for (let index = 0; index < jointPositions.length; index++) {
 		const position = jointPositions[index]!;
 		const rotation = joints[index]!.rotation;
@@ -340,11 +375,11 @@ function updateMeshes(chain: IKChain3D, pose: IKChainPose3D, target: IKTarget3D,
 
 function buildConstraintGuides(chain: IKChain3D, pose: IKChainPose3D) {
 	const builder = new VertexBuilder();
-	const joints = chain.getWorldJoints(pose)
+	const joints = chain.getWorldNodes(pose)
 
 	for (let index = 0; index < chain.segments.length; index++) {
 		const segment = chain.segments[index]!;
-		const jointPose = pose.jointPoses[index]!;
+		const jointPose = pose.segments[index]!;
 		const parent = joints[index]!;
 		const child = joints[index + 1]!;
 
@@ -456,8 +491,8 @@ function buildCone(position: Vector3, length: number, radians: number, rotation:
 	const color = Color.fromRGBA(84, 232, 201, 95);
 
 	const forward = IKChain3D.IDENTITY_VECTOR.rotate(rotation);
-	const up = forward.clone().orthogonal().normalize()!;
-	const right = forward.clone().cross(up).normalize()!;
+	const up = IKChain3D.IDENTITY_VECTOR.orthogonal().rotate(rotation);
+	const right = forward.clone().cross(up);
 
 	const rimRadius = Math.sin(radians) * length;
 	const rimCenter = position.clone().add(forward.clone().multiply(Math.cos(radians) * length));

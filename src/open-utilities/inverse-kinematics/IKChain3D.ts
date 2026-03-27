@@ -1,3 +1,4 @@
+import { Random } from "@open-utilities/maths/Random.js";
 import { throwError } from "../core/throwError.js";
 import { Quaternion } from "../maths/Quaternion.js";
 import { sumArray } from "../maths/sumArray.js";
@@ -85,6 +86,29 @@ export class IKSwingTwistJointState3D {
 		this.twist += (other.twist - this.twist) * t;
 		return this;
 	}
+
+	//rotateTowards(target: IKSwingTwistJointState3D, maxDelta: number) {
+	//	const identityVector = IKChain3D.IDENTITY_VECTOR;
+	//	const referenceAxis = IKChain3D.IDENTITY_VECTOR.orthogonal();
+
+	//	const currentSwingQuat = Quaternion.fromTo(identityVector, directionFromSpherical(this.azimuth, this.swing), referenceAxis);
+	//	const targetSwingQuat = Quaternion.fromTo(identityVector, directionFromSpherical(target.azimuth, target.swing), referenceAxis);
+
+	//	const swingAngle = currentSwingQuat.angleTo(targetSwingQuat);
+	//	const lerp = Math.min(1, maxDelta / swingAngle);
+	//	const swingQuat = currentSwingQuat.clone().slerp(targetSwingQuat, lerp);
+
+	//	const { swing, azimuth } = decomposeSwing(swingQuat);
+	//	this.swing = swing;
+	//	this.azimuth = azimuth;
+	//	this.twist += coerceBetween(target.twist - this.twist, -maxDelta, maxDelta);
+	//	return this;
+
+	//	//this.azimuth = wrapRadians(this.azimuth + shortestAngleDelta(this.azimuth, target.azimuth) * maxDelta);
+	//	//this.swing += coerceBetween(target.swing - this.swing, -maxDelta, maxDelta);
+	//	//this.twist += coerceBetween(target.twist - this.twist, -maxDelta, maxDelta);
+	//	//return this;
+	//}
 }
 
 export class IKHingeJointState3D {
@@ -105,6 +129,11 @@ export class IKHingeJointState3D {
 		this.angle += shortestAngleDelta(this.angle, other.angle) * t;
 		return this;
 	}
+
+	//rotateTowards(state: IKHingeJointState3D, maxDelta: number) {
+	//	this.angle = wrapRadians(this.angle + coerceBetween(shortestAngleDelta(this.angle, state.angle), -maxDelta, maxDelta));
+	//	return this;
+	//}
 }
 
 export type IKJoint3D = IKSwingTwistJoint3D | IKHingeJoint3D;
@@ -119,7 +148,7 @@ export interface IKChain3DOptions {
 	segments: readonly IKChainSegment3D[];
 }
 
-export interface IKChainWorldJoint3D {
+export interface IKChainWorldNode3D {
 	position: Vector3;
 	rotation: Quaternion;
 	child?: {
@@ -166,13 +195,13 @@ export class IKChain3D {
 		);
 	}
 
-	getWorldJoints(pose: IKChainPose3D) {
-		const joints: IKChainWorldJoint3D[] = [{
+	getWorldNodes(pose: IKChainPose3D) {
+		const nodes: IKChainWorldNode3D[] = [{
 			position: pose.position.clone(),
 			rotation: pose.orientation.clone(),
 			child: {
 				segment: this.segments[0]!,
-				pose: pose.jointPoses[0]!,
+				pose: pose.segments[0]!,
 			}
 		}];
 
@@ -181,7 +210,7 @@ export class IKChain3D {
 
 		for (let index = 0; index < this.segments.length; index++) {
 			const segment = this.segments[index]!;
-			const jointState = pose.jointPoses[index]!;
+			const jointState = pose.segments[index]!;
 
 			if (segment.joint instanceof IKHingeJoint3D && jointState instanceof IKHingeJointState3D) {
 				cursorRotation.multiply(segment.joint.rotation(jointState)).normalize()!;
@@ -193,17 +222,17 @@ export class IKChain3D {
 
 			cursor.add(IKChain3D.IDENTITY_VECTOR.rotate(cursorRotation).multiply(segment.length));
 
-			joints.push({
+			nodes.push({
 				position: cursor.clone(),
 				rotation: cursorRotation.clone(),
 				child: !this.segments[index + 1] ? undefined : {
 					segment: this.segments[index + 1]!,
-					pose: pose.jointPoses[index + 1]!,
+					pose: pose.segments[index + 1]!,
 				},
 			});
 		}
 
-		return joints;
+		return nodes;
 	}
 }
 
@@ -211,24 +240,40 @@ export class IKChainPose3D {
 	constructor(
 		readonly position: Vector3,
 		readonly orientation: Quaternion,
-		readonly jointPoses: IKJointPose3D[],
+		readonly segments: IKJointPose3D[],
 	) {}
 
 	clone() {
 		return new IKChainPose3D(
 			this.position.clone(),
 			this.orientation.clone(),
-			this.jointPoses.map(state => state.clone()),
+			this.segments.map(state => state.clone()),
 		);
+	}
+
+	randomize(chain: IKChain3D, random: Random) {
+		for (let index = 0; index < this.segments.length; index++) {
+			const jointState = this.segments[index]!;
+			const joint = chain.segments[index]!.joint;
+			if (jointState instanceof IKHingeJointState3D && joint instanceof IKHingeJoint3D) {
+				jointState.angle = random.nextFloat(joint.minAngle, joint.maxAngle);
+			} else if (jointState instanceof IKSwingTwistJointState3D && joint instanceof IKSwingTwistJoint3D) {
+				jointState.azimuth = random.nextFloat(-Math.PI, Math.PI);
+				jointState.swing = random.nextFloat(0, joint.maxSwing);
+				jointState.twist = random.nextFloat(joint.minTwist, joint.maxTwist);
+			}
+		}
+
+		return this;
 	}
 
 	copy(other: IKChainPose3D) {
 		this.position.copy(other.position);
 		this.orientation.copy(other.orientation);
 
-		for (let index = 0; index < this.jointPoses.length; index++) {
-			const thisJoint = this.jointPoses[index]!;
-			const otherJoint = other.jointPoses[index]!;
+		for (let index = 0; index < this.segments.length; index++) {
+			const thisJoint = this.segments[index]!;
+			const otherJoint = other.segments[index]!;
 
 			if (thisJoint instanceof IKHingeJointState3D && otherJoint instanceof IKHingeJointState3D) {
 				thisJoint.copy(otherJoint);
@@ -251,17 +296,17 @@ export class IKChainPose3D {
 		this.position.lerp(other.position, t);
 		this.orientation.slerp(other.orientation, t);
 
-		for (let index = 0; index < this.jointPoses.length; index++) {
-			const thisJoint = this.jointPoses[index]!;
-			const otherJoint = other.jointPoses[index]!;
+		for (let index = 0; index < this.segments.length; index++) {
+			const thisSegment = this.segments[index]!;
+			const otherSegment = other.segments[index]!;
 
-			if (thisJoint instanceof IKHingeJointState3D && otherJoint instanceof IKHingeJointState3D) {
-				thisJoint.lerpState(otherJoint, t);
+			if (thisSegment instanceof IKHingeJointState3D && otherSegment instanceof IKHingeJointState3D) {
+				thisSegment.lerpState(otherSegment, t);
 				continue;
 			}
 
-			if (thisJoint instanceof IKSwingTwistJointState3D && otherJoint instanceof IKSwingTwistJointState3D) {
-				thisJoint.lerpState(otherJoint, t);
+			if (thisSegment instanceof IKSwingTwistJointState3D && otherSegment instanceof IKSwingTwistJointState3D) {
+				thisSegment.lerpState(otherSegment, t);
 				continue;
 			}
 
@@ -270,6 +315,27 @@ export class IKChainPose3D {
 
 		return this;
 	}
+
+	//rotateTowards(other: IKChainPose3D, maxDelta: number) {
+	//	for (let index = 0; index < this.segments.length; index++) {
+	//		const thisSegment = this.segments[index]!;
+	//		const otherSegment = other.segments[index]!;
+
+	//		if (thisSegment instanceof IKHingeJointState3D && otherSegment instanceof IKHingeJointState3D) {
+	//			thisSegment.rotateTowards(otherSegment, maxDelta);
+	//			continue;
+	//		}
+
+	//		if (thisSegment instanceof IKSwingTwistJointState3D && otherSegment instanceof IKSwingTwistJointState3D) {
+	//			thisSegment.rotateTowards(otherSegment, maxDelta);
+	//			continue;
+	//		}
+
+	//		throw new Error("IKChainPose3D.rotateTowards requires matching topology.");
+	//	}
+
+	//	return this;
+	//}
 }
 
 function directionFromSpherical(azimuth: number, swing: number) {
@@ -287,3 +353,14 @@ function shortestAngleDelta(from: number, to: number) {
 	while (delta < -Math.PI) delta += Math.PI * 2;
 	return delta;
 }
+
+
+//function decomposeSwing(rotation: Quaternion) {
+//	const direction = IKChain3D.IDENTITY_VECTOR.rotate(rotation);
+
+//	// Calculate swing angle (angle from vertical/identity)
+//	const swing = Math.acos(Math.max(-1, Math.min(1, direction.y)));
+//	const azimuth = Math.atan2(direction.z, direction.x);
+	
+//	return { azimuth, swing }
+//}
