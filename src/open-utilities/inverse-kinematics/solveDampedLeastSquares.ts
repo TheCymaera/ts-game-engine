@@ -97,7 +97,7 @@ function computeJacobian<State, Parameter, Metrics extends DampedLeastSquaresMet
 	finiteDifference: number,
 ) {
 	const rows = baseMetrics.errorVector.length;
-	const jacobian = Array.from({ length: rows }, () => Array(parameters.length).fill(0));
+	const jacobian = Array.from({ length: rows }, () => Array.from({ length: parameters.length }, () => 0));
 
 	for (let column = 0; column < parameters.length; column++) {
 		const forwardState = problem.cloneState(state);
@@ -146,23 +146,23 @@ function solveDampedLeastSquaresStep(jacobian: number[][], errorVector: number[]
 		return undefined;
 	}
 
-	const normalMatrix = Array.from({ length: columnCount }, () => Array(columnCount).fill(0));
-	const rhs = Array(columnCount).fill(0);
+	const normalMatrix = Array.from({ length: columnCount }, () => Array.from({ length: columnCount }, () => 0));
+	const rhs = Array.from({ length: columnCount }, () => 0);
 	const dampingSquared = damping * damping;
 
 	for (let row = 0; row < jacobian.length; row++) {
 		for (let column = 0; column < columnCount; column++) {
 			const left = jacobian[row]![column]!;
-			rhs[column] -= left * errorVector[row]!;
+			rhs[column]! -= left * errorVector[row]!;
 
 			for (let innerColumn = 0; innerColumn < columnCount; innerColumn++) {
-				normalMatrix[column]![innerColumn] += left * jacobian[row]![innerColumn]!;
+				normalMatrix[column]![innerColumn]! += left * jacobian[row]![innerColumn]!;
 			}
 		}
 	}
 
 	for (let index = 0; index < columnCount; index++) {
-		normalMatrix[index]![index] += dampingSquared;
+		normalMatrix[index]![index]! += dampingSquared;
 	}
 
 	return solveLinearSystem(normalMatrix, rhs);

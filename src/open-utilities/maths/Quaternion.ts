@@ -141,6 +141,42 @@ export class Quaternion {
 		return Math.acos(2 * dotProduct * dotProduct - 1);
 	}
 
+	toEulerXYZ() {
+		const out = Vector3.new(0,0,0);
+		const { x, y, z, w } = this;
+		out.x = Math.atan2(x * w - y * z, 0.5 - x * x - y * y);
+		out.y = safeAsin(2.0 * (x * z + y * w));
+		out.z = Math.atan2(z * w - x * y, 0.5 - y * y - z * z);
+		return out;
+	}
+
+	toEulerZYX() {
+		const out = Vector3.new(0,0,0);
+		const { x, y, z, w } = this;
+		out.x = Math.atan2(y * z + w * x, 0.5 - x * x + y * y);
+		out.y = safeAsin(-2.0 * (x * z - w * y));
+		out.z = Math.atan2(x * y + w * z, 0.5 - y * y - z * z);
+		return out;
+	}
+
+	toEulerZXY() {
+		const out = Vector3.new(0,0,0);
+		const { x, y, z, w } = this;
+		out.x = safeAsin(2.0 * (w * x + y * z));
+		out.y = Math.atan2(w * y - x * z, 0.5 - y * y - x * x);
+		out.z = Math.atan2(w * z - x * y, 0.5 - z * z - x * x);
+		return out;
+	}
+
+	toEulerYXZ() {
+		const out = Vector3.new(0,0,0);
+		const { x, y, z, w } = this;
+		out.x = safeAsin(-2.0 * (y * z - w * x));
+		out.y = Math.atan2(x * z + y * w, 0.5 - y * y - x * x);
+		out.z = Math.atan2(y * x + w * z, 0.5 - x * x - z * z);
+		return out;
+	}
+
 	static identity() {
 		return Quaternion.new(0, 0, 0, 1);
 	}
@@ -268,4 +304,8 @@ function rejectFromAxis(vector: Vector3, axis: Vector3) {
 function orthogonal(direction: Vector3) {
 	const axis = Math.abs(direction.x) < 0.5 ? Vector3.new(1, 0, 0) : Vector3.new(0, 1, 0);
 	return direction.clone().cross(axis).normalize() ?? Vector3.new(0, 0, 1);
+}
+
+function safeAsin(value: number) {
+	return Math.asin(coerceBetween(value, -1, 1));
 }

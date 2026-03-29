@@ -24,7 +24,7 @@ export class ECS {
 	runMainLoop(delta: Duration) {
 		if (this.systems.tickMode === ECSTickMode.Fixed) {
 			this.#runTickFixed(delta);
-		} else if (this.systems.tickMode === ECSTickMode.Clamped) {
+		} else {
 			this.#runTickSubStepped(delta);
 		}
 
@@ -154,18 +154,19 @@ export type ECSPlugin = (ecs: ECS) => void;
 export class Entity {
 	readonly id: string = crypto.randomUUID();
 
-	constructor(params: Object[]) {
+	constructor(params: object[]) {
 		this.components = new Map();
 		for (const param of params) {
 			this.components.set(param.constructor as ClassOf<any>, param);
 		}
 	}
 
-	add<T extends Object>(component: T) {
+	add<T extends object>(component: T) {
 		this.components.set(component.constructor, component);
 		return this;
 	}
 
+	// oxlint-disable-next-line typescript/no-unsafe-function-type
 	remove<T extends Function>(type: T) {
 		this.components.delete(type);
 		return this;
@@ -174,10 +175,10 @@ export class Entity {
 	query<T>(type: ClassOf<T>): T | undefined {
 		// @ts-expect-error Cannot infer type
 		if (type === Entity) return this as T;
-		return this.components.get(type);
+		return this.components.get(type) as T | undefined;
 	}
 
-	has<T extends Object>(type: ClassOf<T>): boolean {
+	has<T extends object>(type: ClassOf<T>): boolean {
 		return this.components.has(type);
 	}
 
@@ -209,7 +210,7 @@ export class EntityList {
 	}
 
 	spawn<T extends unknown[]>(components: T) {
-		const entity = new Entity(components as Object[]);
+		const entity = new Entity(components as object[]);
 		this.#entities.push(entity);
 		return entity;
 	}
@@ -225,6 +226,7 @@ export class EntityList {
 	query<T extends any[]>(...types: { [K in keyof T]: ClassOf<T[K]> }) {
 		const results: T[] = [];
 		for (const entity of this.#entities) {
+			// oxlint-disable-next-line typescript/no-unsafe-return
 			const items = types.map(type => entity.query(type));
 			if (items.every(Boolean)) {
 				results.push(items as T);
@@ -241,14 +243,14 @@ export class EntityList {
 export class ResourceList {
 	#resources = new Map<ClassOf<any>, any>();
 
-	add<T extends Object>(resource: T) {
+	add<T extends object>(resource: T) {
 		this.#resources.set(resource.constructor, resource);
 		return this;
 	}
 
-	get<T>(type: ClassOf<T>): T {
-		const resource = this.#resources.get(type);
-		if (!resource) throw new Error(`Resource of type ${type.name} not found`);
-		return resource as T;
+	get<T>(type: ClassOf<T>): T | undefined {
+		const resource = this.#resources.get(type) as T | undefined;
+		//if (!resource) throw new Error(`Resource of type ${type.name} not found`);
+		return resource;
 	}
 }

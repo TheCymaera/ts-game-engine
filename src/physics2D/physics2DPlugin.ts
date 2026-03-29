@@ -11,6 +11,7 @@ import { Vector2 } from "@open-utilities/maths/Vector2";
 import { Renderer2D } from "@open-utilities/rendering/Renderer2D";
 import { PathStyle } from "@open-utilities/rendering/PathStyle";
 import { LineSegment } from "@open-utilities/maths/LineSegment";
+import { throwError } from "@open-utilities/core/throwError";
 
 export enum PhysicsSmoothingMode {
 	/**
@@ -52,7 +53,7 @@ export function physics2DRenderCollidersPlugin(ecs: ECS) {
 const previousPositions: WeakMap<PhysicsBody, { position: Vector2, rotation: number }> = new WeakMap();
 
 function stepPhysics(context: ECSUpdateContext) {
-	const physics2D = context.ecs.resources.get(Physics2D);
+	const physics2D = context.ecs.resources.get(Physics2D) ?? throwError("Physics2D resource not found");
 	const query = context.entities.query(PhysicsBody, Entity).toArray();
 	
 	const bodies: PhysicsBody[] = [];
@@ -111,7 +112,7 @@ function updateExtrapolation(physicsBody: PhysicsBody, transform: Transform2D, i
 }
 
 function renderColliders(context: ECSUpdateContext) {
-	const renderer = context.ecs.resources.get(Renderer2D);
+	const renderer = context.ecs.resources.get(Renderer2D) ?? throwError("Renderer2D resource not found");
 	for (const [physicsBody] of context.entities.query(PhysicsBody)) {
 		const shape = physicsBody.transformedShape;
 		const style = ShapeStyle.outline(Color.red, .1);

@@ -9,7 +9,7 @@ export function dedent(templateStrings: TemplateStringsArray|string, ...values: 
 	for (let i = 0; i < strings.length; i++) {
 		let match;
 
-		if (match = strings[i]!.match(/\n[\t ]+/g)) {
+		if ((match = strings[i]!.match(/\n[\t ]+/g))) {
 			matches.push(...match);
 		}
 	}

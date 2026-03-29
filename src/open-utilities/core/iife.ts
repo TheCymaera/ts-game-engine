@@ -5,8 +5,8 @@ export namespace iife {
 	/**
 	 * Invokes the given function immediately and returns its result.
 	 */
-	export function result<T extends ()=>any>(fn: T): ReturnType<T> {
-		return fn();
+	export function result<T extends ()=>unknown>(fn: T): ReturnType<T> {
+		return fn() as ReturnType<T>;
 	}
 
 	/**

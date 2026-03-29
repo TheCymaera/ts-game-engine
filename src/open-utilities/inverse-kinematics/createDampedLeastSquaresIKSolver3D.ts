@@ -22,7 +22,9 @@ export function createDampedLeastSquaresIKSolver3D(options: Partial<DampedLeastS
 		evaluator: options.evaluator ?? createIKEvaluator3D(),
 	} satisfies DampedLeastSquaresIKSolverOptions;
 
-	return (chain: IKChain3D, pose: IKChainPose3D, target: IKTarget3D) => solve(chain, pose, target, resolvedOptions);
+	return (chain: IKChain3D, pose: IKChainPose3D, target: IKTarget3D) => {
+		solve(chain, pose, target, resolvedOptions);
+	};
 }
 
 interface JointParameterDescriptor {
@@ -37,7 +39,9 @@ function solve(chain: IKChain3D, pose: IKChainPose3D, target: IKTarget3D, option
 		evaluateState: state => options.evaluator(chain, state, target),
 		listParameters: state => createParameterDescriptors(state.segments),
 		perturbParameter: (state, parameter, delta) => perturbParameter(chain, state, parameter, delta),
-		applyStep: (state, parameters, step, scale) => applyStep(chain, state, parameters, step, scale),
+		applyStep: (state, parameters, step, scale) => {
+			applyStep(chain, state, parameters, step, scale);
+		}
 	};
 
 	solveDampedLeastSquares(pose, problem, options);

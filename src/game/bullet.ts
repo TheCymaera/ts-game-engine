@@ -8,7 +8,7 @@ import { Transform2D } from "@plugins/spatialPlugin";
 import { Gravity } from "./gravity";
 
 // Bullet
-export function bulletPlugin(app: ECS) {
+export function bulletPlugin(_app: ECS) {
 }
 
 export class Bullet { }

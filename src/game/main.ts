@@ -33,7 +33,7 @@ Object.assign(globalThis, {
 
 const cameraHeight = 20;
 
-Promise.resolve().then(main);
+void Promise.resolve().then(main);
 function main() {
 	app.systems.tickMode = ECSTickMode.Clamped;
 	app.systems.tickDelta = Duration.seconds(1 / 60);
@@ -103,12 +103,12 @@ mouse.update();
 
 
 
-async function setUpGame(context: ECSContext) {
+async function setUpGame(_context: ECSContext) {
 	const level = generateDungeon();
 	tileMap.layers.push(level.tileMap);
 	app.entities.spawn([tileMap]);
 
-	const player = app.entities.spawn(playerBundle());
+	const _player = app.entities.spawn(playerBundle());
 
 	app.entities.spawn([CoordinateGrid2D.new()]);
 
@@ -155,7 +155,7 @@ const cameraTarget = Vector2.new(0, 0);
 const cameraPosition = Vector2.new(0, 0);
 
 function updateCamera(context: ECSContext) {
-	const playerPosition = app.entities.query(Transform2D, Player)?.next().value?.[0]
+	const playerPosition = app.entities.query(Transform2D, Player).next().value?.[0]
 		?.position.clone() ??
 		Vector2.new(0, 0);
 	

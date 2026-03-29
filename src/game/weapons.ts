@@ -1,5 +1,5 @@
 import { Duration } from "@open-utilities/core/Duration";
-import { ECS, Entity, type ECSUpdateContext as ECSContext } from "@open-utilities/ecs/ECS";
+import { Entity, type ECSUpdateContext as ECSContext } from "@open-utilities/ecs/ECS";
 import { cameraShake } from "./resources";
 import type { Player } from "./player";
 

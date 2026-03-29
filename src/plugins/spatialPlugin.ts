@@ -47,7 +47,7 @@ function propagateTransforms(context: ECSUpdateContext) {
 		// visit and copy parent
 		if (parent && parentTransform) {
 			visit(parent.parent, parentTransform);
-			const parentGlobalTransform = parent.parent.query(GlobalTransform)!!
+			const parentGlobalTransform = parent.parent.query(GlobalTransform)!;
 			globalTransform.transform = parentGlobalTransform.transform.clone();
 		}
 

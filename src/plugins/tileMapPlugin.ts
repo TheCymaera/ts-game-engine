@@ -4,6 +4,7 @@ import { Rect } from "@open-utilities/maths/Rect";
 import { Vector2 } from "@open-utilities/maths/Vector2";
 import { Renderer2D } from "@open-utilities/rendering/Renderer2D";
 import { RenderedObject2D } from "./renderingPlugin";
+import { throwError } from "@open-utilities/core/throwError";
 
 export function tileMapPlugin(app: ECS) {
 	app.systems.onRender.add(renderTileMaps);
@@ -123,7 +124,7 @@ export class StandardTileType implements TileType {
 }
 
 function renderTileMaps(update: ECSUpdateContext) {
-	const renderer = update.ecs.resources.get(Renderer2D);
+	const renderer = update.ecs.resources.get(Renderer2D) ?? throwError("Renderer2D resource not found");
 	const ortho = renderer.getTransform().getOrthoRect();
 
 	for (const [tileMap] of update.entities.query(TileMap)) {

@@ -76,7 +76,6 @@ export class PhysicsBody {
 
 	constructor(options: Partial<PhysicsBody> & { shape: Collider2DShape, position: Vector2 }) {
 		for (const [key, value] of Object.entries(options)) {
-			if (value === undefined) continue;
 			// @ts-expect-error Assign property
 			this[key] = value;
 		}
@@ -132,7 +131,7 @@ export class Physics2D {
 	static ResolveCollisionWithRotation = resolveCollisionWithRotation;
 }
 
-function detectCollisions(bodies: readonly PhysicsBody[], timeStep: number): PhysicsCollisionResult[] {
+function detectCollisions(bodies: readonly PhysicsBody[], _timeStep: number): PhysicsCollisionResult[] {
 	// Broad phase (Sweep and Prune)
 	const pairs: [number, number][] = [];
 	bodies = bodies.toSorted((a, b) => a.boundingBox.minX - b.boundingBox.minX);

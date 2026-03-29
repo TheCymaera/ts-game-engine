@@ -1,9 +1,7 @@
-import { iife } from "@open-utilities/core/iife";
 import { ECS } from "@open-utilities/ecs/ECS";
 import { Keyboard } from "@open-utilities/io/Keyboard";
-import { MouseTracker as MouseTracker } from "@open-utilities/io/MouseTracker";
+import { MouseTracker } from "@open-utilities/io/MouseTracker";
 import { Random } from "@open-utilities/maths/Random";
-import { Vector2 } from "@open-utilities/maths/Vector2";
 import { CameraShake } from "@open-utilities/rendering/CameraShake";
 import { Renderer2D } from "@open-utilities/rendering/Renderer2D";
 import { Physics2D } from "@physics2D/physics2D";

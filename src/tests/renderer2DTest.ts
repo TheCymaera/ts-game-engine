@@ -13,7 +13,7 @@ import { ShapeStyle } from "@open-utilities/rendering/ShapeStyle";
 export const debugText = document.querySelector("#debug-text")!;
 export const renderer = Renderer2D.fromCanvas(document.querySelector("canvas")!);
 
-AnimationFrameScheduler.periodic((delta) => {
+AnimationFrameScheduler.periodic((_delta) => {
 	renderer.drawLine({
 		line: LineSegment.fromPoints(Vector2.new(0, 0), Vector2.new(1, 1)),
 		style: new PathStyle({

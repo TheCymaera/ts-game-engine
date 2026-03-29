@@ -9,7 +9,7 @@ export function cursorIndicatorPlugin(ecs: ECS) {
 	ecs.systems.onRender.add(renderCursor);
 }
 
-function renderCursor(context: ECSUpdateContext) {
+function renderCursor(_context: ECSUpdateContext) {
 	renderer.drawCircle({
 		circle: new Circle(mouse.worldPosition, .2),
 		style: ShapeStyle.outline(Color.green, .05),

@@ -1,7 +1,4 @@
-import { Meter } from "@open-utilities/testing/Meter";
 import { Rect } from "@open-utilities/maths/Rect";
-
-const meter = new Meter();
 
 export const mergeRects = mergeRects1;
 
@@ -46,7 +43,7 @@ function merge(a: Rect, b: Rect) {
 	return undefined;
 }
 
-function mergeRects2(rects: Rect[]) {
+function _mergeRects(rects: Rect[]) {
 	//using _ = meter.timer();
 
 	// Optional tolerance for float coords; set to 0 for exact matching

@@ -25,5 +25,5 @@ export const spiderBundle = (position: Vector2)=>[
 	}),
 ]
 
-function handleSpiderMovement(context: ECSUpdateContext) {
+function handleSpiderMovement(_context: ECSUpdateContext) {
 }

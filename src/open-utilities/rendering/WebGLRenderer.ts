@@ -1,6 +1,5 @@
 import { assertNever } from "@open-utilities/types/assertNever.js";
 import { Matrix4 } from "../maths/Matrix4.js";
-import type { Rect } from "../maths/Rect.js";
 
 export class WebGLRenderer {
 	constructor(readonly gl: WebGL2RenderingContext) {
@@ -409,6 +408,7 @@ function compileShader(
 	gl.shaderSource(shader, source);
 	gl.compileShader(shader);
 	
+	// oxlint-disable-next-line typescript/strict-boolean-expressions
 	if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
 		const info = gl.getShaderInfoLog(shader);
 		gl.deleteShader(shader);
@@ -427,10 +427,11 @@ function createProgram(
 	const fragmentShader = compileShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
 
 	const program = gl.createProgram();
-	if (!program) throw new Error("Failed to create shader program.");
 	gl.attachShader(program, vertexShader);
 	gl.attachShader(program, fragmentShader);
 	gl.linkProgram(program);
+	
+	// oxlint-disable-next-line typescript/strict-boolean-expressions
 	if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
 		const info = gl.getProgramInfoLog(program);
 		gl.deleteProgram(program);
@@ -448,12 +449,10 @@ function createGeometryBuffers(
 	geometry: Geometry,
 ) {
 	const vbo = gl.createBuffer();
-	if (!vbo) throw new Error("Failed to create VBO.");
 	gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
 	gl.bufferData(gl.ARRAY_BUFFER, geometry.vertices.buffer, glGeometryUsage(geometry.vertices.usage));
 
 	const ibo = gl.createBuffer();
-	if (!ibo) throw new Error("Failed to create IBO.");
 	gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
 	gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, geometry.indices.buffer, glGeometryUsage(geometry.indices.usage));
 	gl.bindBuffer(gl.ARRAY_BUFFER, null);
@@ -461,7 +460,6 @@ function createGeometryBuffers(
 
 
 	const vao = gl.createVertexArray();
-	if (!vao) throw new Error("Failed to create VAO.");
 	gl.bindVertexArray(vao);
 	gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
 	gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);

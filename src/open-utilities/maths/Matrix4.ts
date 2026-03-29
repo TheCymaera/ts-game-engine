@@ -217,18 +217,19 @@ export class Matrix4 {
 		);
 	}
 
-	static fromValues(
-		c0r0: number, c1r0: number, c2r0: number, c3r0: number,
-		c0r1: number, c1r1: number, c2r1: number, c3r1: number,
-		c0r2: number, c1r2: number, c2r2: number, c3r2: number,
-		c0r3: number, c1r3: number, c2r3: number, c3r3: number,
-	) {
-		return new Matrix4(new Array(16)).set(
-			c0r0, c1r0, c2r0, c3r0,
-			c0r1, c1r1, c2r1, c3r1,
-			c0r2, c1r2, c2r2, c3r2,
-			c0r3, c1r3, c2r3, c3r3,
-		);
+	static fromColumnMajor(values: number[]) {
+		if (values.length !== 16) throw new Error("Expected 16 values to create a Matrix4");
+		return new Matrix4(values);
+	}
+
+	static fromRowMajor(values: number[]) {
+		if (values.length !== 16) throw new Error("Expected 16 values to create a Matrix4");
+		return new Matrix4([
+			values[0]!, values[4]!, values[8]!, values[12]!,
+			values[1]!, values[5]!, values[9]!, values[13]!,
+			values[2]!, values[6]!, values[10]!, values[14]!,
+			values[3]!, values[7]!, values[11]!, values[15]!,
+		]);
 	}
 
 	static identity() {
@@ -238,6 +239,20 @@ export class Matrix4 {
 			0, 0, 1, 0,
 			0, 0, 0, 1,
 		);
+	}
+
+	static fromValues(
+		c0r0: number, c1r0: number, c2r0: number, c3r0: number,
+		c0r1: number, c1r1: number, c2r1: number, c3r1: number,
+		c0r2: number, c1r2: number, c2r2: number, c3r2: number,
+		c0r3: number, c1r3: number, c2r3: number, c3r3: number,
+	) {
+		return Matrix4.fromRowMajor([
+			c0r0, c1r0, c2r0, c3r0,
+			c0r1, c1r1, c2r1, c3r1,
+			c0r2, c1r2, c2r2, c3r2,
+			c0r3, c1r3, c2r3, c3r3,
+		]);
 	}
 
 	static ortho(rect: Rect, near: number = -1, far: number = 1) {

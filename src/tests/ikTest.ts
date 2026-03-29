@@ -41,7 +41,7 @@ const totalReach = chain.totalLength;
 const targetRadiusMin = totalReach * 0.2;
 const targetRadiusMax = totalReach * 0.8;
 const targetOrigin = pose.position.clone().add(Vector3.new(0, .7, 0));
-const groundTargetsOnly = false;
+const groundTargetsOnly: boolean = false;
 const random = Random.default;
 
 const jointSize = 0.015;

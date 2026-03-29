@@ -4,7 +4,7 @@ import { denormalize } from "@open-utilities/maths/denormalize";
 import { Rect } from "@open-utilities/maths/Rect";
 import { Vector2 } from "@open-utilities/maths/Vector2";
 import { AnimationFrameScheduler } from "@open-utilities/rendering/AnimationFrameScheduler";
-import { VertexAttributeLayout, VertexAttributeType, VertexAttributeKind, BufferBuilder, Geometry, Material, Mesh, RenderPrimitiveType, ShaderModule, ShaderUniformFloat, ShaderUniformInt, WebGLRenderer, ShaderUniform as ShaderUniform, GeometryUsage, ShaderBuffer } from "@open-utilities/rendering/WebGLRenderer";
+import { VertexAttributeLayout, VertexAttributeType, VertexAttributeKind, BufferBuilder, Geometry, Material, Mesh, RenderPrimitiveType, ShaderModule, ShaderUniformFloat, WebGLRenderer, GeometryUsage, ShaderBuffer } from "@open-utilities/rendering/WebGLRenderer";
 
 
 const canvas = document.querySelector("canvas")!;

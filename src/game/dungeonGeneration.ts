@@ -24,7 +24,7 @@ export class Room {
 		this.exits = this.template.exits.map(i => {
 			const opposite = i.direction.clone().multiply(-1);
 
-			const allowSameTemplate = false;//random.nextBoolean();
+			const allowSameTemplate = false as boolean;//random.nextBoolean();
 
 			const candidates: RoomCandidate[] = [];
 			for (const room of roomTemplates) {
@@ -53,7 +53,7 @@ export class Room {
 
 const MIN_ROOMS = 4;
 const MAX_ROOMS = 10;
-const ALLOW_WALL_OVERLAP = true;
+const ALLOW_WALL_OVERLAP: boolean = true;
 export function generateDungeon() {
 	const tileMap = new SparseTileMapLayer();
 	const rooms = generate(tileMap);

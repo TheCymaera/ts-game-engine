@@ -7,8 +7,6 @@ export function throttleFunction<T extends (...args: unknown[]) => unknown>(wait
 			timeout = undefined;
 			func.apply(this, args);
 		};
-		if (!timeout) {
-			timeout = setTimeout(later, wait.milliseconds);
-		}
+		timeout ??= setTimeout(later, wait.milliseconds);
 	} as T;
 }

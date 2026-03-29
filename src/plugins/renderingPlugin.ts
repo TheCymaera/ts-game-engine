@@ -7,6 +7,7 @@ import { Renderer2D } from "@open-utilities/rendering/Renderer2D";
 import { ShapeStyle } from "@open-utilities/rendering/ShapeStyle";
 import { assertNever } from "@open-utilities/types/assertNever";
 import { GlobalTransform } from "./spatialPlugin";
+import { throwError } from "@open-utilities/core/throwError";
 
 export class RenderedObject2D {
 	static readonly defaultStyle = ShapeStyle.fill(Color.fromRGBA(255, 0, 0, 255 / 2))
@@ -33,7 +34,7 @@ export class RenderedObject2D {
 export function renderingPlugin(ecs: ECS) {
 	ecs.systems.onRender.add(renderShapes);
 
-	const renderer = ecs.resources.get(Renderer2D);
+	const renderer = ecs.resources.get(Renderer2D) ?? throwError("Renderer2D resource not found");
 	ecs.systems.onPreUpdate.add(()=>renderer.clear());
 	ecs.systems.onPostRender.add(()=>renderer.flush());
 }
@@ -46,7 +47,7 @@ export type RenderedLayer = {
 
 
 function renderShapes(context: ECSUpdateContext) {
-	const renderer = context.ecs.resources.get(Renderer2D);
+	const renderer = context.ecs.resources.get(Renderer2D) ?? throwError("Renderer2D resource not found");
 	for (const [shape, transform] of context.entities.query(RenderedObject2D, GlobalTransform)) {
 		renderer.withTransform(transform.transform, ()=> {
 			shape.render(renderer);

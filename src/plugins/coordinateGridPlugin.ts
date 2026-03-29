@@ -1,8 +1,7 @@
+import { throwError } from "@open-utilities/core/throwError"
 import type { ECS, ECSUpdateContext } from "@open-utilities/ecs/ECS"
 import { LineSegment } from "@open-utilities/maths/LineSegment"
-import { Matrix4 } from "@open-utilities/maths/Matrix4"
 import { Vector2 } from "@open-utilities/maths/Vector2"
-import { Vector3 } from "@open-utilities/maths/Vector3"
 import { Color } from "@open-utilities/rendering/Color"
 import { PathStyle } from "@open-utilities/rendering/PathStyle"
 import { Renderer2D } from "@open-utilities/rendering/Renderer2D"
@@ -34,7 +33,7 @@ export class CoordinateGrid2D {
 
 
 function renderCoordinateGrids(update: ECSUpdateContext) {
-	const renderer = update.ecs.resources.get(Renderer2D);
+	const renderer = update.ecs.resources.get(Renderer2D) ?? throwError("Renderer2D resource not found");
 	for (const [grid] of update.entities.query(CoordinateGrid2D)) {
 		renderCoordinateGrid(renderer, grid);
 	}

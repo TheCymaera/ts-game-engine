@@ -50,7 +50,7 @@ export function rectContactPoints(rect: Rect, collider: Collider2DShape): Vector
 
 function circleVsCircleContactPoint(bodyA: Circle, bodyB: Circle): Vector2 {
 	const diff = bodyB.center.clone().subtract(bodyA.center);
-	const direction = diff.clone().normalize()! ?? Vector2.new(1, 0);
+	const direction = diff.clone().normalize() ?? Vector2.new(1, 0);
 	const contactPoint = bodyA.center.clone().add(direction.multiply(bodyA.radius));
 	return contactPoint;
 }
