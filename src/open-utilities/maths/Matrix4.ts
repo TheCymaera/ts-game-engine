@@ -1,3 +1,4 @@
+import { Quaternion } from "./Quaternion.js";
 import { Rect } from "./Rect.js";
 import { Vector3 } from "./Vector3.js";
 
@@ -193,6 +194,10 @@ export class Matrix4 {
 		return this.rotateFromAxisIndex(radians, Vector3.X_INDEX, Vector3.Y_INDEX);
 	}
 
+	rotate(quaternion: Quaternion) {
+		return this.multiplyFrom(this, Matrix4.fromQuaternion(quaternion));
+	}
+
 	getTranslation(): Vector3 {
 		return Vector3.new(this.m41, this.m42, this.m43);
 	}
@@ -233,7 +238,7 @@ export class Matrix4 {
 	}
 
 	static identity() {
-		return Matrix4.fromValues(
+		return Matrix4.new(
 			1, 0, 0, 0,
 			0, 1, 0, 0,
 			0, 0, 1, 0,
@@ -241,18 +246,33 @@ export class Matrix4 {
 		);
 	}
 
-	static fromValues(
+	static new(
 		c0r0: number, c1r0: number, c2r0: number, c3r0: number,
 		c0r1: number, c1r1: number, c2r1: number, c3r1: number,
 		c0r2: number, c1r2: number, c2r2: number, c3r2: number,
 		c0r3: number, c1r3: number, c2r3: number, c3r3: number,
 	) {
-		return Matrix4.fromRowMajor([
-			c0r0, c1r0, c2r0, c3r0,
-			c0r1, c1r1, c2r1, c3r1,
-			c0r2, c1r2, c2r2, c3r2,
-			c0r3, c1r3, c2r3, c3r3,
+		return Matrix4.fromColumnMajor([
+			c0r0, c0r1, c0r2, c0r3,
+			c1r0, c1r1, c1r2, c1r3,
+			c2r0, c2r1, c2r2, c2r3,
+			c3r0, c3r1, c3r2, c3r3,
 		]);
+	}
+
+	static fromQuaternion(quaternion: Quaternion) {
+		const x = quaternion.x, y = quaternion.y, z = quaternion.z, w = quaternion.w;
+		const x2 = x + x, y2 = y + y, z2 = z + z;
+		const xx = x * x2, xy = x * y2, xz = x * z2;
+		const yy = y * y2, yz = y * z2, zz = z * z2;
+		const wx = w * x2, wy = w * y2, wz = w * z2;
+
+		return Matrix4.new(
+			1 - (yy + zz), xy - wz, xz + wy, 0,
+			xy + wz, 1 - (xx + zz), yz - wx, 0,
+			xz - wy, yz + wx, 1 - (xx + yy), 0,
+			0, 0, 0, 1
+		);
 	}
 
 	static ortho(rect: Rect, near: number = -1, far: number = 1) {
@@ -265,7 +285,7 @@ export class Matrix4 {
 		const bt = 1 / (bottom - top);
 		const nf = 1 / (near - far);
 
-		return Matrix4.fromValues(
+		return Matrix4.new(
 			-2 * lr, 0, 0, (left + right) * lr,
 			0, -2 * bt, 0, (top + bottom) * bt,
 			0, 0, 2 * nf, (far + near) * nf,
@@ -277,7 +297,7 @@ export class Matrix4 {
 		const f = 1 / Math.tan(fovy / 2);
 		const nf = 1 / (near - far);
 
-		return Matrix4.fromValues(
+		return Matrix4.new(
 			f / aspectRatio, 0, 0, 0,
 			0, f, 0, 0,
 			0, 0, (far + near) * nf, (2 * far * near) * nf,
@@ -294,7 +314,7 @@ export class Matrix4 {
 
 		const cameraUp = side.clone().cross(forward);
 
-		return Matrix4.fromValues(
+		return Matrix4.new(
 			side.x, side.y, side.z, -side.dot(eye),
 			cameraUp.x, cameraUp.y, cameraUp.z, -cameraUp.dot(eye),
 			-forward.x, -forward.y, -forward.z, forward.dot(eye),
@@ -303,7 +323,7 @@ export class Matrix4 {
 	}
 
 	static translation({x,y,z}: Vector3) {
-		return Matrix4.fromValues(
+		return Matrix4.new(
 			1, 0, 0, x,
 			0, 1, 0, y,
 			0, 0, 1, z,
@@ -312,7 +332,7 @@ export class Matrix4 {
 	}
 
 	static scale({x,y,z}: Vector3) {
-		return Matrix4.fromValues(
+		return Matrix4.new(
 			x, 0, 0, 0,
 			0, y, 0, 0,
 			0, 0, z, 0,

@@ -150,11 +150,8 @@ export interface IKChain3DOptions {
 
 export interface IKChainWorldNode3D {
 	position: Vector3;
-	rotation: Quaternion;
-	child?: {
-		segment: IKChainSegment3D;
-		pose: IKJointPose3D;
-	}
+	worldRotation: Quaternion;
+	localRotation: Quaternion;
 }
 
 export class IKChain3D {
@@ -198,11 +195,8 @@ export class IKChain3D {
 	getWorldNodes(pose: IKChainPose3D) {
 		const nodes: IKChainWorldNode3D[] = [{
 			position: pose.position.clone(),
-			rotation: pose.orientation.clone(),
-			child: {
-				segment: this.segments[0]!,
-				pose: pose.segments[0]!,
-			}
+			worldRotation: Quaternion.identity(),
+			localRotation: pose.orientation.clone(),
 		}];
 
 		const cursor = pose.position.clone();
@@ -212,23 +206,23 @@ export class IKChain3D {
 			const segment = this.segments[index]!;
 			const jointState = pose.segments[index]!;
 
+			let localRotation: Quaternion;
 			if (segment.joint instanceof IKHingeJoint3D && jointState instanceof IKHingeJointState3D) {
-				cursorRotation.multiply(segment.joint.rotation(jointState)).normalize()!;
+				localRotation = segment.joint.rotation(jointState).normalize()!;
 			} else if (segment.joint instanceof IKSwingTwistJoint3D && jointState instanceof IKSwingTwistJointState3D) {
-				cursorRotation.multiply(segment.joint.rotation(jointState)).normalize()!;
+				localRotation = segment.joint.rotation(jointState).normalize()!;
 			} else {
 				throw new Error("IKChain3D.getWorld requires matching topology.");
 			}
+
+			cursorRotation.multiply(localRotation);
 
 			cursor.add(IKChain3D.IDENTITY_VECTOR.rotate(cursorRotation).multiply(segment.length));
 
 			nodes.push({
 				position: cursor.clone(),
-				rotation: cursorRotation.clone(),
-				child: !this.segments[index + 1] ? undefined : {
-					segment: this.segments[index + 1]!,
-					pose: pose.segments[index + 1]!,
-				},
+				worldRotation: cursorRotation.clone(),
+				localRotation,
 			});
 		}
 

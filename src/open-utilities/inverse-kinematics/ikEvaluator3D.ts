@@ -52,7 +52,7 @@ function evaluateIK(chain: IKChain3D, pose: IKChainPose3D, target: IKTarget3D, o
 
 	let orientationError = 0;
 	if (target.orientation) {
-		const orientationErrorVector = rotationErrorVector(endEffector.rotation, target.orientation);
+		const orientationErrorVector = rotationErrorVector(endEffector.worldRotation, target.orientation);
 		orientationError = orientationErrorVector.length();
 		errorVector.push(
 			orientationErrorVector.x * options.orientationWeight,

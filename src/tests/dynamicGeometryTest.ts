@@ -79,7 +79,7 @@ const geometry = new Geometry({
 });
 
 const shader = new ShaderModule({
-	vertexShader: `#version 300 es
+	vertexShader: /*glsl*/`#version 300 es
 		layout(location = 0) in vec3 aPosition;
 		layout(location = 1) in vec4 aColor;
 		layout(location = 2) in vec3 aNormal;
@@ -96,7 +96,7 @@ const shader = new ShaderModule({
 			vColor = vec4(aColor.rgb * light, aColor.a);
 		}
 	`,
-	fragmentShader: `#version 300 es
+	fragmentShader: /*glsl*/`#version 300 es
 		precision mediump float;
 
 		uniform float uAlpha;
