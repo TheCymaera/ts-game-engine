@@ -273,6 +273,7 @@ const swingTwistGuideMeshes = chain.segments.map((segment) => {
 const RETARGET_INTERVAL = () => Duration.seconds(random.nextFloat(2.2, 4.2));
 let retargetTimer = RETARGET_INTERVAL();
 let orbitAngle = 0;
+let orbitSpeed = 0.22;
 
 
 function randomTarget(): IKTarget3D {
@@ -285,6 +286,15 @@ function randomTarget(): IKTarget3D {
 
 let desiredTarget = randomTarget();
 const currentTarget = desiredTarget;
+
+//{
+//	retargetTimer = Duration.seconds(Infinity);
+//	//orbitSpeed = 0;
+//	orbitAngle = Math.PI / 4;
+
+//	desiredTarget = new IKTarget3D(Vector3.new(0, 1.5, 2.0));
+//	currentTarget.position.copy(desiredTarget.position);
+//}
 
 AnimationFrameScheduler.periodic(({ elapsedTime }) => {
 	updateCanvasDimensions();
@@ -313,7 +323,7 @@ AnimationFrameScheduler.periodic(({ elapsedTime }) => {
 	const nodes = chain.getWorldNodes(pose);
 
 	const effector = nodes.at(-1)!.position;
-	orbitAngle += elapsedTime.seconds * 0.22;
+	orbitAngle += elapsedTime.seconds * orbitSpeed;
 
 	renderer.setViewTransform(Matrix4.lookAt({
 		eye: Vector3.new(7.4, 7.0, 0).rotateY(orbitAngle),
