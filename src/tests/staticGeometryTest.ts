@@ -12,14 +12,6 @@ canvas.width = canvas.clientWidth;
 canvas.height = canvas.clientHeight;
 const renderer = WebGLRenderer.fromCanvas(canvas);
 
-
-renderer.setProjectionTransform(Matrix4.ortho(
-	Rect.fromPoints(Vector2.new(-1, -1), Vector2.new(1, 1)),
-));
-
-renderer.setViewTransform(Matrix4.identity());
-
-
 const geometry = new Geometry({
 	attributeLayout: new VertexAttributeLayout()
 		.append("aPosition", 2, VertexAttributeType.Float32)
@@ -80,7 +72,6 @@ const modelTransform = Matrix4.identity();
 AnimationFrameScheduler.periodic((context) => {
 	modelTransform.rotateZ(context.elapsedTime.seconds);
 
-
 	material.uniforms.uAlpha.value = denormalize(
 		normalize(Math.sin(performance.now() * 0.005), -1, 1),
 		0.5, 1
@@ -88,6 +79,14 @@ AnimationFrameScheduler.periodic((context) => {
 
 	material.needsUniformUpdate = true;
 	
+	renderer.beginPass({
+		uProjection: uniforms.matrix4(Matrix4.ortho(
+			Rect.fromPoints(Vector2.new(-1, -1), Vector2.new(1, 1)),
+		)),
+		uView: uniforms.matrix4(Matrix4.identity()),
+	});
 	renderer.clear();
-	renderer.drawMesh(mesh, modelTransform);
+	renderer.drawMesh(mesh, {
+		uModel: uniforms.matrix4(modelTransform),
+	});
 })

@@ -2,10 +2,26 @@ import { assertNever } from "@open-utilities/types/assertNever.js";
 import { Matrix4 } from "../maths/Matrix4.js";
 
 export class WebGLRenderer {
+	readonly derivedUniforms: { readonly [scope in UniformScope]: Record<string, DerivedUniformDefinition> } = {
+		pass: {},
+		draw: {},
+	}
+
 	constructor(readonly gl: WebGL2RenderingContext) {
 		gl.enable(gl.BLEND);
 		gl.enable(gl.DEPTH_TEST);
 		gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+		this.derivedUniforms.draw.uModelViewProjection = {
+			dependsOn: ["uProjection", "uView", "uModel"],
+			get: (dependencies) => {
+				const projection = (dependencies.uProjection as ShaderUniformMatrix4).value;
+				const view = (dependencies.uView as ShaderUniformMatrix4).value;
+				const model = (dependencies.uModel as ShaderUniformMatrix4).value;
+
+				return uniforms.matrix4(projection.clone().multiply(view).multiply(model));
+			},
+		};
 	}
 
 	static fromCanvas(canvas: HTMLCanvasElement): WebGLRenderer {
@@ -18,30 +34,26 @@ export class WebGLRenderer {
 		this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
 	}
 
-	setViewTransform(transform: Matrix4) {
-		this.#builtInUniforms.uView.value = transform;
-	}
-
-	setProjectionTransform(transform: Matrix4) {
-		this.#builtInUniforms.uProjection.value = transform;
+	#passUniforms: UniformList = {};
+	beginPass(uniforms: UniformList) {
+		this.#passUniforms = uniforms;
 	}
 
 	#lastMaterial = new Map<WebGLProgram, Material>();
-	drawMesh(mesh: Mesh, modelTransform = Matrix4.identity()) {
+	drawMesh(mesh: Mesh, uniforms: UniformList = {}) {
 		const program = this.#getProgram(mesh.material.shader);
 		this.gl.useProgram(program);
 
 		const uniformLocations = this.#cache.uniforms.getOrInsertComputed(program, ()=>new Map());
+		const passDerivedUniforms = this.#resolveDerivedUniforms(program, "pass", this.#passUniforms, uniformLocations);
 
-		// apply built-in uniforms
-		{
-			this.#builtInUniforms.uModel.value = modelTransform;
-			this.#builtInUniforms.uModelViewProjection.value = this.#builtInUniforms.uProjection.value.clone()
-				.multiply(this.#builtInUniforms.uView.value)
-				.multiply(modelTransform);
+		const drawUniforms = { ...this.#passUniforms, ...passDerivedUniforms, ...uniforms };
+		const drawDerivedUniforms = this.#resolveDerivedUniforms(program, "draw", drawUniforms, uniformLocations);
 
-			this.#applyUniforms(program, this.#builtInUniforms, uniformLocations, false);
-		}
+		this.#applyUniforms(program, this.#passUniforms, uniformLocations, false);
+		this.#applyUniforms(program, passDerivedUniforms, uniformLocations, false);
+		this.#applyUniforms(program, uniforms, uniformLocations, false);
+		this.#applyUniforms(program, drawDerivedUniforms, uniformLocations, false);
 
 		// apply material uniforms
 		if (this.#lastMaterial.get(program) !== mesh.material || mesh.material.needsUniformUpdate) {
@@ -66,13 +78,64 @@ export class WebGLRenderer {
 		this.gl.bindVertexArray(null);
 	}
 
-	#builtInUniforms = {
-		uModel: new ShaderUniformMatrix4(Matrix4.identity()),
-		uView: new ShaderUniformMatrix4(Matrix4.identity()),
-		uProjection: new ShaderUniformMatrix4(Matrix4.identity()),
-		uModelViewProjection: new ShaderUniformMatrix4(Matrix4.identity()),
-	} satisfies UniformList;
+	#resolveDerivedUniforms(
+		program: WebGLProgram,
+		scope: UniformScope,
+		availableUniforms: UniformList,
+		locations: Map<string, WebGLUniformLocation | null>,
+	) {
+		const resolved: UniformList = {};
+		const resolving = new Set<string>();
 
+		for (const name in this.derivedUniforms[scope]) {
+			this.#resolveDerivedUniform(program, scope, name, availableUniforms, resolved, resolving, locations);
+		}
+
+		return resolved;
+	}
+
+	#resolveDerivedUniform(
+		program: WebGLProgram,
+		scope: UniformScope,
+		name: string,
+		availableUniforms: UniformList,
+		resolved: UniformList,
+		resolving: Set<string>,
+		locations: Map<string, WebGLUniformLocation | null>,
+	) {
+		if (name in resolved) return resolved[name]!;
+
+
+		const definition = this.derivedUniforms[scope][name];
+		if (!definition) return availableUniforms[name] ?? null;
+
+		// skip if not used by the program
+		const location = locations.getOrInsertComputed(name, ()=>this.gl.getUniformLocation(program, name));
+		if (!location) return null;
+
+		if (resolving.has(name)) {
+			throw new Error(`Derived uniform cycle detected for "${name}".`);
+		}
+
+		resolving.add(name);
+		const dependencies: Record<string, ShaderUniform> = {};
+		for (const dependencyName of definition.dependsOn) {
+			const dependency = 
+				availableUniforms[dependencyName] ?? 
+				this.#resolveDerivedUniform(program, scope, dependencyName, availableUniforms, resolved, resolving, locations);
+
+			if (!dependency) {
+				throw new Error(`Derived uniform "${name}" requires uniform "${dependencyName}".`);
+			}
+
+			dependencies[dependencyName] = dependency;
+		}
+
+		const out = definition.get(dependencies);
+		resolved[name] = out;
+		resolving.delete(name);
+		return out;
+	}
 
 	#cache = {
 		programs: new Map<ShaderModule, WebGLProgram>(),
@@ -164,6 +227,13 @@ export class ShaderModule {
 
 export type UniformList = Record<string, ShaderUniform>;
 
+export type UniformScope = "pass" | "draw";
+
+export interface DerivedUniformDefinition<TUniform extends ShaderUniform = ShaderUniform> {
+	dependsOn: readonly string[];
+	get(dependencies: Readonly<Record<string, ShaderUniform>>): TUniform;
+}
+
 export class Material<TUniforms extends UniformList = UniformList> {
 	readonly shader: ShaderModule;
 	readonly uniforms: TUniforms;
@@ -175,7 +245,6 @@ export class Material<TUniforms extends UniformList = UniformList> {
 	}) {
 		this.shader = options.shader;
 		this.uniforms = options.uniforms;
-		ensureUniformsNotReserved(this.uniforms);
 	}
 }
 
@@ -387,17 +456,7 @@ export class BufferBuilder {
 	private data: number[] = [];
 }
 
-const builtinUniformNames = new Set(["uModel", "uView", "uProjection", "uModelViewProjection"]);
-function ensureUniformsNotReserved(uniforms: UniformList) {
-	for (const reservedName of Object.values(builtinUniformNames)) {
-		if (reservedName in uniforms) {
-			throw new Error(`Uniform name ${reservedName} is reserved for renderer-managed transforms.`);
-		}
-	}
-}
-
 type IndexBufferData = Uint16Array | Uint32Array;
-
 
 function compileShader(
 	gl: WebGL2RenderingContext,

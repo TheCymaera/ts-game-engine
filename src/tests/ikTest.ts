@@ -23,6 +23,11 @@ debugText.style.color = "#f7f1da";
 const renderer = WebGLRenderer.fromCanvas(canvas);
 renderer.gl.clearColor(0.03, 0.04, 0.07, 1);
 
+const passUniforms = {
+	uProjection: uniforms.matrix4(Matrix4.identity()),
+	uView: uniforms.matrix4(Matrix4.identity()),
+};
+
 const chain = IKChain3D.new({
 	segments: [
 		{ length: 0.80, joint: IKSwingTwistJoint3D.new({ referenceAxis: Vector3.new(0, 0, 1), maxSwing: 0.2 * Math.PI, minTwist: -1 * Math.PI, maxTwist: 1 * Math.PI }) },
@@ -325,25 +330,26 @@ AnimationFrameScheduler.periodic(({ elapsedTime }) => {
 	const effector = nodes.at(-1)!.position;
 	orbitAngle += elapsedTime.seconds * orbitSpeed;
 
-	renderer.setViewTransform(Matrix4.lookAt({
+	passUniforms.uView.value = Matrix4.lookAt({
 		eye: Vector3.new(7.4, 7.0, 0).rotateY(orbitAngle),
 		target: pose.position.clone().add(Vector3.new(0, 1.3, 0)),
 		up: Vector3.new(0, 1, 0),
-	}));
+	});
 
+	renderer.beginPass(passUniforms);
 	renderer.clear();
-	renderer.drawMesh(gridMesh);
+	drawMesh(gridMesh);
 	drawConstraintGuides(chain, pose, nodes);
 	for (const node of nodes) {
-		renderer.drawMesh(nodeAxesMesh, Matrix4.identity().translate(node.position).rotate(node.worldRotation));
+		drawMesh(nodeAxesMesh, Matrix4.identity().translate(node.position).rotate(node.worldRotation));
 	}
 	
 	drawBones(nodes);
 	drawNodes(nodes);
 
-	renderer.drawMesh(evaluation.isSolved ? targetReachedMesh : targetPendingMesh, Matrix4.translation(currentTarget.position));
+	drawMesh(evaluation.isSolved ? targetReachedMesh : targetPendingMesh, Matrix4.translation(currentTarget.position));
 	if (currentTarget.orientation) {
-		renderer.drawMesh(targetAxesMesh, Matrix4.identity().translate(currentTarget.position).rotate(currentTarget.orientation));
+		drawMesh(targetAxesMesh, Matrix4.identity().translate(currentTarget.position).rotate(currentTarget.orientation));
 	}
 
 	debugText.textContent = dedent`
@@ -364,17 +370,23 @@ function updateCanvasDimensions() {
 	canvas.width = width;
 	canvas.height = height;
 	renderer.gl.viewport(0, 0, width, height);
-	renderer.setProjectionTransform(Matrix4.perspective({
+	passUniforms.uProjection.value = Matrix4.perspective({
 		fovy: Math.PI / 3,
 		aspectRatio: width / height,
 		near: 0.1,
 		far: 100,
-	}));
+	});
+}
+
+function drawMesh(mesh: Mesh, modelTransform = Matrix4.identity()) {
+	renderer.drawMesh(mesh, {
+		uModel: uniforms.matrix4(modelTransform),
+	});
 }
 
 function drawBones(nodes: IKChainWorldNode3D[]) {
 	for (let index = 0; index < nodes.length - 1; index++) {
-		renderer.drawMesh(
+		drawMesh(
 			boneMeshes[index]!,
 			Matrix4.identity()
 				.translate(nodes[index]!.position)
@@ -385,7 +397,7 @@ function drawBones(nodes: IKChainWorldNode3D[]) {
 
 function drawNodes(nodes: IKChainWorldNode3D[]) {
 	for (let index = 0; index < nodes.length; index++) {
-		renderer.drawMesh(nodeMeshes[index]!, Matrix4.translation(nodes[index]!.position));
+		drawMesh(nodeMeshes[index]!, Matrix4.translation(nodes[index]!.position));
 	}
 }
 
@@ -408,7 +420,7 @@ function drawConstraintGuides(chain: IKChain3D, pose: IKChainPose3D, joints: IKC
 		}
 
 		if (segment.joint instanceof IKHingeJoint3D) {
-			renderer.drawMesh(
+			drawMesh(
 				hingeGuideMeshes[index]!,
 				Matrix4.identity()
 					.translate(parent.position)
@@ -436,21 +448,21 @@ function drawSwingTwistGuide(
 	const swingBasis = parentRotation.clone().multiply(swingRotation).normalize() ?? parentRotation.clone();
 	const ringCenter = jointPosition.clone().add(axisWorld.clone().multiply(segment.length * .8));
 
-	renderer.drawMesh(
+	drawMesh(
 		swingTwistGuideMeshes[index]!.swingCone,
 		Matrix4.identity()
 			.translate(jointPosition)
 			.rotate(parentRotation),
 	);
 
-	renderer.drawMesh(
+	drawMesh(
 		swingTwistGuideMeshes[index]!.twistArc,
 		Matrix4.identity()
 			.translate(jointPosition)
 			.rotate(swingBasis),
 	);
 	
-	renderer.drawMesh(
+	drawMesh(
 		twistIndicatorMesh,
 		Matrix4.identity()
 			.translate(ringCenter)

@@ -23,18 +23,19 @@ canvas.height = canvas.clientHeight;
 
 const renderer = WebGLRenderer.fromCanvas(canvas);
 
-renderer.setProjectionTransform(Matrix4.perspective({
-	fovy: Math.PI / 3, 
-	aspectRatio: canvas.width / canvas.height,
-	near: 0.1,
-	far: 100,
-}));
-
-renderer.setViewTransform(Matrix4.lookAt({
-	eye: Vector3.new(0, 0, 2.5),
-	target: Vector3.new(0, 0, 0),
-	up: Vector3.new(0, 1, 0),
-}));
+const passUniforms = {
+	uProjection: uniforms.matrix4(Matrix4.perspective({
+		fovy: Math.PI / 3, 
+		aspectRatio: canvas.width / canvas.height,
+		near: 0.1,
+		far: 100,
+	})),
+	uView: uniforms.matrix4(Matrix4.lookAt({
+		eye: Vector3.new(0, 0, 2.5),
+		target: Vector3.new(0, 0, 0),
+		up: Vector3.new(0, 1, 0),
+	})),
+};
 
 
 const cyan = Color.fromRGBHex(0x00ffff)
@@ -136,8 +137,11 @@ AnimationFrameScheduler.periodic(() => {
 
 	geometry.vertices.isDirty = true;
 
+	renderer.beginPass(passUniforms);
 	renderer.clear();
-	renderer.drawMesh(mesh);
+	renderer.drawMesh(mesh, {
+		uModel: uniforms.matrix4(Matrix4.identity()),
+	});
 });
 
 function setVertex(index: number, position: Vector3, color: Color) {
