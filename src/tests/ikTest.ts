@@ -12,7 +12,7 @@ import { Color } from "@open-utilities/rendering/Color";
 import { buildAxesMesh, buildGridMesh } from "../open-utilities/rendering/debugMeshes.js";
 import { buildCuboidBetween, buildCircleArc, buildConeWire, buildUvSphere } from "../open-utilities/rendering/geometryBuilders.js";
 import type { GeometryData } from "../open-utilities/rendering/geometryBuilders.js";
-import { BufferBuilder, Geometry, GeometryUsage, Material, Mesh, RenderPrimitiveType, ShaderModule, ShaderUniformFloat, VertexAttributeKind, VertexAttributeLayout, VertexAttributeType, WebGLRenderer, ShaderBuffer } from "@open-utilities/rendering/WebGLRenderer";
+import { BufferBuilder, Geometry, GeometryUsage, Material, Mesh, RenderPrimitiveType, ShaderModule, VertexAttributeKind, VertexAttributeLayout, VertexAttributeType, WebGLRenderer, ShaderBuffer, uniforms } from "@open-utilities/rendering/WebGLRenderer";
 import { dedent } from "@open-utilities/string/dedent";
 
 const canvas = document.querySelector("canvas")!;
@@ -139,18 +139,18 @@ const solidLayout = new VertexAttributeLayout()
 const shadedMaterial = new Material({
 	shader: shadedShader,
 	uniforms: {
-		uAmbient: new ShaderUniformFloat(0.3),
-		uDiffuseA: new ShaderUniformFloat(0.7),
-		uDiffuseB: new ShaderUniformFloat(0.2),
+		uAmbient: uniforms.float(0.3),
+		uDiffuseA: uniforms.float(0.7),
+		uDiffuseB: uniforms.float(0.2),
 	},
 });
 
 const unshadedMaterial = new Material({
 	shader: shadedShader,
 	uniforms: {
-		uAmbient: new ShaderUniformFloat(1),
-		uDiffuseA: new ShaderUniformFloat(0),
-		uDiffuseB: new ShaderUniformFloat(0),
+		uAmbient: uniforms.float(1),
+		uDiffuseA: uniforms.float(0),
+		uDiffuseB: uniforms.float(0),
 	},
 });
 

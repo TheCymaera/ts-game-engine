@@ -207,6 +207,12 @@ export class ShaderUniformMatrix4 implements ShaderUniform {
 	}
 }
 
+export namespace uniforms {
+	export const int = (value: number) => new ShaderUniformInt(value);
+	export const float = (value: number) => new ShaderUniformFloat(value);
+	export const matrix4 = (value: Matrix4) => new ShaderUniformMatrix4(value);
+}
+
 export enum RenderPrimitiveType {
 	Points,
 	Lines,

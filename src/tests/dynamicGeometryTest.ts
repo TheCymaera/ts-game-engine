@@ -9,12 +9,12 @@ import {
 	Mesh,
 	RenderPrimitiveType,
 	ShaderModule,
-	ShaderUniformFloat,
 	VertexAttributeKind,
 	VertexAttributeType,
 	WebGLRenderer,
 	ShaderBuffer,
 	GeometryUsage,
+	uniforms,
 } from "@open-utilities/rendering/WebGLRenderer";
 
 const canvas = document.querySelector("canvas")!;
@@ -113,7 +113,7 @@ const shader = new ShaderModule({
 const material = new Material({
 	shader,
 	uniforms: {
-		uAlpha: new ShaderUniformFloat(1),
+		uAlpha: uniforms.float(1),
 	},
 });
 

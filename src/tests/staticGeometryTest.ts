@@ -4,7 +4,7 @@ import { denormalize } from "@open-utilities/maths/denormalize";
 import { Rect } from "@open-utilities/maths/Rect";
 import { Vector2 } from "@open-utilities/maths/Vector2";
 import { AnimationFrameScheduler } from "@open-utilities/rendering/AnimationFrameScheduler";
-import { VertexAttributeLayout, VertexAttributeType, VertexAttributeKind, BufferBuilder, Geometry, Material, Mesh, RenderPrimitiveType, ShaderModule, ShaderUniformFloat, WebGLRenderer, GeometryUsage, ShaderBuffer } from "@open-utilities/rendering/WebGLRenderer";
+import { VertexAttributeLayout, VertexAttributeType, VertexAttributeKind, BufferBuilder, Geometry, Material, Mesh, RenderPrimitiveType, ShaderModule, WebGLRenderer, GeometryUsage, ShaderBuffer, uniforms } from "@open-utilities/rendering/WebGLRenderer";
 
 
 const canvas = document.querySelector("canvas")!;
@@ -70,7 +70,7 @@ const shader = new ShaderModule({
 const material = new Material({
 	shader,
 	uniforms: {
-		uAlpha: new ShaderUniformFloat(1),
+		uAlpha: uniforms.float(1),
 	}
 });
 
