@@ -12,19 +12,22 @@ import { throwError } from "@open-utilities/core/throwError";
 export class RenderedObject2D {
 	static readonly defaultStyle = ShapeStyle.fill(Color.fromRGBA(255, 0, 0, 255 / 2))
 
-	constructor(public render: (renderer: Renderer2D)=>void) {}
+	constructor(
+		public render: (renderer: Renderer2D)=>void,
+		public zIndex = 0,
+	) {}
 
-	static fromShape(shape: Circle | Rect | Capsule2D, style = this.defaultStyle, zIndex?: number) {
+	static fromShape(shape: Circle | Rect | Capsule2D, style = this.defaultStyle) {
 		if (shape instanceof Circle) return new RenderedObject2D(renderer => {
-			renderer.drawCircle({ circle: shape, style, zIndex })
+			renderer.drawCircle({ circle: shape, style })
 		});
 
 		if (shape instanceof Rect) return new RenderedObject2D(renderer => {
-			renderer.drawRect({ rect: shape, style, zIndex });
+			renderer.drawRect({ rect: shape, style });
 		});
 
 		if (shape instanceof Capsule2D) return new RenderedObject2D(renderer => {
-			renderer.drawCapsule({ capsule: shape, style, zIndex });
+			renderer.drawCapsule({ capsule: shape, style });
 		});
 
 		assertNever(shape);
@@ -36,19 +39,21 @@ export function renderingPlugin(ecs: ECS) {
 
 	const renderer = ecs.resources.get(Renderer2D) ?? throwError("Renderer2D resource not found");
 	ecs.systems.onPreUpdate.add(()=>renderer.clear());
-	ecs.systems.onPostRender.add(()=>renderer.flush());
 }
 
 export type RenderedLayer = {
 	shape: Circle | Rect | Capsule2D;
 	style?: ShapeStyle;
-	zIndex?: number;
 }
 
 
 function renderShapes(context: ECSUpdateContext) {
 	const renderer = context.ecs.resources.get(Renderer2D) ?? throwError("Renderer2D resource not found");
-	for (const [shape, transform] of context.entities.query(RenderedObject2D, GlobalTransform)) {
+
+	const entries = [...context.entities.query(RenderedObject2D, GlobalTransform)];
+	entries.sort((a, b) => a[0].zIndex - b[0].zIndex);
+
+	for (const [shape, transform] of entries) {
 		renderer.withTransform(transform.transform, ()=> {
 			shape.render(renderer);
 		});

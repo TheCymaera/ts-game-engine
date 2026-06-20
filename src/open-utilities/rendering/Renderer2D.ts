@@ -88,141 +88,111 @@ export class Renderer2D {
 	}
 
 	withTransform(transform: Matrix4, callback: ()=>void) {
-		const oldTransform = this.#modelTransform.clone();
-		this.#modelTransform = oldTransform.clone().multiply(transform);
+		this.#appendTransform(transform);
 		callback();
-		this.#modelTransform = oldTransform;
+		this.#popTransform();
 	}
 	
-	drawLine({ line, style, zIndex = 0 }: { line: LineSegment, style: PathStyle, zIndex?: number }) {
-		this.#scheduleDraw(zIndex, () =>{
-			this.#setPathStyle(style);
-			this.ctx.beginPath();
-			this.ctx.moveTo(line.point1.x, line.point1.y);
-			this.ctx.lineTo(line.point2.x, line.point2.y);
-			this.ctx.stroke();
-		});
+	drawLine({ line, style }: { line: LineSegment, style: PathStyle }) {
+		this.#setPathStyle(style);
+		this.ctx.beginPath();
+		this.ctx.moveTo(line.point1.x, line.point1.y);
+		this.ctx.lineTo(line.point2.x, line.point2.y);
+		this.ctx.stroke();
 	}
 
 	/**
 	 * @experimental
 	 */
-	drawText({ text, zIndex = 0, color }: { text: string, color: Color, zIndex?: number }) {
+	drawText({ text, color }: { text: string, color: Color }) {
 		const transform = Matrix4.identity()
 			.scale(Vector3.new(1, -1, 1).multiply(1/10));
 		
 		this.withTransform(transform, () => {
-			this.#scheduleDraw(zIndex, () =>{
-				this.ctx.fillStyle = color.toString();
-				this.ctx.font = "14px sans-serif";
-				this.ctx.fillText(text, 0, 0);//position.x, position.y);
-			});
+			this.ctx.fillStyle = color.toString();
+			this.ctx.font = "14px sans-serif";
+			this.ctx.fillText(text, 0, 0);//position.x, position.y);
 		});
 	}
 
-	drawPath({ path, style, zIndex = 0 }: { path: Path, style: ShapeStyle, zIndex?: number }) {
-		this.#scheduleDraw(zIndex, () =>{
-			this.#setShapeStyle(style);
-			this.#usePath(path);
-			if (style.fill.a) this.ctx.fill();
-			this.ctx.stroke();
-		});
+	drawPath({ path, style }: { path: Path, style: ShapeStyle }) {
+		this.#setShapeStyle(style);
+		this.#usePath(path);
+		if (style.fill.a) this.ctx.fill();
+		this.ctx.stroke();
 	}
 
-	drawPolygon({ polygon, style, zIndex = 0 }: { polygon: Polygon, style: ShapeStyle, zIndex?: number }) {
-		this.drawPath({ path: Path.fromPolygon(polygon, style.stroke.width), style, zIndex });
+	drawPolygon({ polygon, style }: { polygon: Polygon, style: ShapeStyle }) {
+		this.drawPath({ path: Path.fromPolygon(polygon, style.stroke.width), style });
 	}
 
-	drawCircle({ circle, style, zIndex = 0 }: { circle: Circle, style: ShapeStyle, zIndex?: number }) {
-		this.#scheduleDraw(zIndex, () =>{
-			this.#setShapeStyle(style);
+	drawCircle({ circle, style }: { circle: Circle, style: ShapeStyle }) {
+		this.#setShapeStyle(style);
+		this.ctx.beginPath();
+		const buffer = style.stroke.color.a ? style.stroke.width / 2 : 0;
+		this.ctx.arc(circle.center.x, circle.center.y, circle.radius - buffer, 0, 2 * Math.PI);
+		if (style.fill.a) this.ctx.fill();
+		this.ctx.stroke();
+	}
+
+	drawCapsule({ capsule, style }: { capsule: Capsule2D, style: ShapeStyle }) {
+		this.#setShapeStyle(style);
+		const axis = capsule.axis();
+		const axisLength = axis.length();
+		const buffer = style.stroke.color.a ? style.stroke.width / 2 : 0;
+		const radius = Math.max(capsule.radius - buffer, 0);
+
+		if (radius === 0 || axisLength === 0) {
 			this.ctx.beginPath();
-			const buffer = style.stroke.color.a ? style.stroke.width / 2 : 0;
-			this.ctx.arc(circle.center.x, circle.center.y, circle.radius - buffer, 0, 2 * Math.PI);
-			if (style.fill.a) this.ctx.fill();
-			this.ctx.stroke();
-		});
-	}
-
-	drawCapsule({ capsule, style, zIndex = 0 }: { capsule: Capsule2D, style: ShapeStyle, zIndex?: number }) {
-		this.#scheduleDraw(zIndex, () =>{
-			this.#setShapeStyle(style);
-			const axis = capsule.axis();
-			const axisLength = axis.length();
-			const buffer = style.stroke.color.a ? style.stroke.width / 2 : 0;
-			const radius = Math.max(capsule.radius - buffer, 0);
-
-			if (radius === 0 || axisLength === 0) {
-				this.ctx.beginPath();
-				this.ctx.arc(capsule.point1.x, capsule.point1.y, radius, 0, 2 * Math.PI);
-
-				if (style.fill.a) this.ctx.fill();
-				this.ctx.stroke();
-				return;
-			}
-
-			const center = capsule.center();
-			const angle = Math.atan2(axis.y, axis.x);
-			const p1 = Vector2.new(-axisLength / 2, 0);
-			const p2 = Vector2.new(axisLength / 2, 0);
-
-			this.ctx.save();
-
-			this.ctx.translate(center.x, center.y);
-			this.ctx.rotate(angle);
-
-			this.ctx.beginPath();
-
-			this.ctx.moveTo(p1.x, p1.y + radius);
-			this.ctx.arc(p1.x, p1.y, radius, Math.PI / 2, Math.PI * 3 / 2);
-			this.ctx.lineTo(p2.x, p2.y - radius);
-			this.ctx.arc(p2.x, p2.y, radius, Math.PI * 3 / 2, Math.PI / 2);
-
-			this.ctx.closePath();
+			this.ctx.arc(capsule.point1.x, capsule.point1.y, radius, 0, 2 * Math.PI);
 
 			if (style.fill.a) this.ctx.fill();
 			this.ctx.stroke();
-
-			this.ctx.restore();
-		});
-	}
-
-	drawRect({ rect, style, zIndex = 0 }: { rect: Rect, style: ShapeStyle, zIndex?: number }) {
-		this.#scheduleDraw(zIndex, () =>{
-			this.#setShapeStyle(style);
-			this.ctx.beginPath();
-			const buffer = style.stroke.color.a ? style.stroke.width / 2 : 0;
-			this.ctx.rect(rect.minX + buffer, rect.minY + buffer, rect.width - buffer * 2, rect.height - buffer * 2);
-			if (style.fill.a) this.ctx.fill();
-			this.ctx.stroke();
-		});
-	}
-
-	drawImage(rect: Rect, bitmap: CanvasImageSource, zIndex = 0) {
-		this.#scheduleDraw(zIndex, () =>{
-			this.ctx.drawImage(
-				bitmap,
-				rect.minX,
-				rect.minY,
-				rect.width,
-				rect.height,
-			);
-		});
-	}
-
-	flush() {
-		// sort by z
-		this.#toDraw.sort((a, b) => a.z - b.z);
-
-		// draw
-		const projView = this.#projectionTransform.clone().multiply(this.#viewTransform);
-		for (const { transform: model, func } of this.#toDraw) {
-			this.ctx.setTransform(projView.clone().multiply(model))
-			func();
+			return;
 		}
 
-		// clear queue
-		this.#toDraw.length = 0;
+		const center = capsule.center();
+		const angle = Math.atan2(axis.y, axis.x);
+		const p1 = Vector2.new(-axisLength / 2, 0);
+		const p2 = Vector2.new(axisLength / 2, 0);
+
+		this.ctx.save();
+
+		this.ctx.translate(center.x, center.y);
+		this.ctx.rotate(angle);
+
+		this.ctx.beginPath();
+
+		this.ctx.moveTo(p1.x, p1.y + radius);
+		this.ctx.arc(p1.x, p1.y, radius, Math.PI / 2, Math.PI * 3 / 2);
+		this.ctx.lineTo(p2.x, p2.y - radius);
+		this.ctx.arc(p2.x, p2.y, radius, Math.PI * 3 / 2, Math.PI / 2);
+
+		this.ctx.closePath();
+
+		if (style.fill.a) this.ctx.fill();
+		this.ctx.stroke();
+
+		this.ctx.restore();
+	}
+
+	drawRect({ rect, style }: { rect: Rect, style: ShapeStyle }) {
+		this.#setShapeStyle(style);
+		this.ctx.beginPath();
+		const buffer = style.stroke.color.a ? style.stroke.width / 2 : 0;
+		this.ctx.rect(rect.minX + buffer, rect.minY + buffer, rect.width - buffer * 2, rect.height - buffer * 2);
+		if (style.fill.a) this.ctx.fill();
+		this.ctx.stroke();
+	}
+
+	drawImage({ rect, bitmap }: { rect: Rect, bitmap: CanvasImageSource }) {
+		this.ctx.drawImage(
+			bitmap,
+			rect.minX,
+			rect.minY,
+			rect.width,
+			rect.height,
+		);
 	}
 
 	#usePath(path: Path) {
@@ -264,15 +234,29 @@ export class Renderer2D {
 		this.ctx.fillStyle = shapeStyle.fill.toString();
 	}
 
-	#toDraw: { z: number, transform: Matrix4, func: ()=>void }[] = []
-
-	#scheduleDraw(z: number, callback: ()=>void) {
-		this.#toDraw.push({ z, transform: this.#modelTransform, func: callback });
-	}
-
-	#modelTransform = Matrix4.identity();
 	#viewTransform = Matrix4.identity();
 	#projectionTransform = Matrix4.identity();
+
+	#transformStack: Matrix4[] = [];
+	#appendTransform(modelTransform: Matrix4) {
+		const currentTop = this.#currentTransform();
+		const newTop = currentTop.clone().multiply(modelTransform);
+		this.#transformStack.push(newTop);
+		this.ctx.setTransform(newTop);
+	}
+
+	#popTransform() {
+		this.#transformStack.pop();
+		this.ctx.setTransform(this.#currentTransform());
+	}
+
+	#currentTransform() {
+		if (this.#transformStack.length === 0) {
+			return this.#projectionTransform.clone().multiply(this.#viewTransform);
+		} else {
+			return this.#transformStack[this.#transformStack.length - 1]!;
+		}
+	}
 
 	#clientToWorldSpaceTransform() {
 		return (this.#viewTransform.clone().invert() ?? Matrix4.identity())

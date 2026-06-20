@@ -14,6 +14,10 @@ export const debugText = document.querySelector("#debug-text")!;
 export const renderer = Renderer2D.fromCanvas(document.querySelector("canvas")!);
 
 AnimationFrameScheduler.periodic((_delta) => {
+	renderer.setTransform(Matrix4.ortho(
+		Rect.fromPoints(Vector2.new(-1, -1), Vector2.new(2, 2)),
+	));
+
 	renderer.drawLine({
 		line: LineSegment.fromPoints(Vector2.new(0, 0), Vector2.new(1, 1)),
 		style: new PathStyle({
@@ -43,12 +47,6 @@ AnimationFrameScheduler.periodic((_delta) => {
 			})
 		})
 	})
-
-	renderer.setTransform(Matrix4.ortho(
-		Rect.fromPoints(Vector2.new(-1, -1), Vector2.new(2, 2)),
-	));
-
-	renderer.flush();
 })
 
 renderer.bitmapDimensions = Vector2.new(100, 100);

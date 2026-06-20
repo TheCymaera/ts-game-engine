@@ -6,13 +6,12 @@ import { mouse, renderer } from "./resources";
 
 
 export function cursorIndicatorPlugin(ecs: ECS) {
-	ecs.systems.onRender.add(renderCursor);
+	ecs.systems.onPostRender.add(renderCursor);
 }
 
 function renderCursor(_context: ECSUpdateContext) {
 	renderer.drawCircle({
 		circle: new Circle(mouse.worldPosition, .2),
 		style: ShapeStyle.outline(Color.green, .05),
-		zIndex: 1
 	});
 }
