@@ -2,20 +2,7 @@ import { Matrix4 } from "@open-utilities/maths/Matrix4";
 import { Vector3 } from "@open-utilities/maths/Vector3";
 import { AnimationFrameScheduler } from "@open-utilities/rendering/AnimationFrameScheduler";
 import { Color } from "@open-utilities/rendering/Color";
-import {
-	VertexAttributeLayout,
-	Geometry,
-	Material,
-	Mesh,
-	RenderPrimitiveType,
-	ShaderModule,
-	VertexAttributeKind,
-	VertexAttributeType,
-	WebGLRenderer,
-	ShaderBuffer,
-	GeometryUsage,
-	uniforms,
-} from "@open-utilities/rendering/WebGLRenderer";
+import { VertexAttributeLayout, Geometry, Material, Mesh, RenderPrimitiveType, ShaderModule, VertexAttributeKind, VertexAttributeType, WebGLRenderer, ShaderBuffer, GeometryUsage, float32 } from "@open-utilities/rendering/WebGLRenderer";
 
 const canvas = document.querySelector("canvas")!;
 canvas.width = canvas.clientWidth;
@@ -24,17 +11,17 @@ canvas.height = canvas.clientHeight;
 const renderer = WebGLRenderer.fromCanvas(canvas);
 
 const passUniforms = {
-	uProjection: uniforms.matrix4(Matrix4.perspective({
+	uProjection: Matrix4.perspective({
 		fovy: Math.PI / 3, 
 		aspectRatio: canvas.width / canvas.height,
 		near: 0.1,
 		far: 100,
-	})),
-	uView: uniforms.matrix4(Matrix4.lookAt({
+	}),
+	uView: Matrix4.lookAt({
 		eye: Vector3.new(0, 0, 2.5),
 		target: Vector3.new(0, 0, 0),
 		up: Vector3.new(0, 1, 0),
-	})),
+	}),
 };
 
 
@@ -114,7 +101,7 @@ const shader = new ShaderModule({
 const material = new Material({
 	shader,
 	uniforms: {
-		uAlpha: uniforms.float(1),
+		uAlpha: float32(1),
 	},
 });
 
@@ -140,7 +127,7 @@ AnimationFrameScheduler.periodic(() => {
 	renderer.beginPass(passUniforms);
 	renderer.clear();
 	renderer.drawMesh(mesh, {
-		uModel: uniforms.matrix4(Matrix4.identity()),
+		uModel: Matrix4.identity(),
 	});
 });
 

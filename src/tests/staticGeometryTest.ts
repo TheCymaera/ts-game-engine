@@ -4,7 +4,7 @@ import { denormalize } from "@open-utilities/maths/denormalize";
 import { Rect } from "@open-utilities/maths/Rect";
 import { Vector2 } from "@open-utilities/maths/Vector2";
 import { AnimationFrameScheduler } from "@open-utilities/rendering/AnimationFrameScheduler";
-import { VertexAttributeLayout, VertexAttributeType, VertexAttributeKind, BufferBuilder, Geometry, Material, Mesh, RenderPrimitiveType, ShaderModule, WebGLRenderer, GeometryUsage, ShaderBuffer, uniforms } from "@open-utilities/rendering/WebGLRenderer";
+import { VertexAttributeLayout, VertexAttributeType, VertexAttributeKind, BufferBuilder, Geometry, Material, Mesh, RenderPrimitiveType, ShaderModule, WebGLRenderer, GeometryUsage, ShaderBuffer, float32 } from "@open-utilities/rendering/WebGLRenderer";
 
 
 const canvas = document.querySelector("canvas")!;
@@ -62,7 +62,7 @@ const shader = new ShaderModule({
 const material = new Material({
 	shader,
 	uniforms: {
-		uAlpha: uniforms.float(1),
+		uAlpha: float32(1),
 	}
 });
 
@@ -80,13 +80,13 @@ AnimationFrameScheduler.periodic((context) => {
 	material.needsUniformUpdate = true;
 	
 	renderer.beginPass({
-		uProjection: uniforms.matrix4(Matrix4.ortho(
+		uProjection: Matrix4.ortho(
 			Rect.fromPoints(Vector2.new(-1, -1), Vector2.new(1, 1)),
-		)),
-		uView: uniforms.matrix4(Matrix4.identity()),
+		),
+		uView: Matrix4.identity(),
 	});
 	renderer.clear();
 	renderer.drawMesh(mesh, {
-		uModel: uniforms.matrix4(modelTransform),
+		uModel: modelTransform,
 	});
 })

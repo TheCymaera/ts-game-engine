@@ -1,5 +1,9 @@
 import { assertNever } from "@open-utilities/types/assertNever.js";
 import { Matrix4 } from "../maths/Matrix4.js";
+import type { Color } from "./Color.js";
+import type { Rect } from "../maths/Rect.js";
+import { Vector2 } from "@open-utilities/maths/Vector2.js";
+import { Vector3 } from "@open-utilities/maths/Vector3.js";
 
 export class WebGLRenderer {
 	readonly derivedUniforms: { readonly [scope in UniformScope]: Record<string, DerivedUniformDefinition> } = {
@@ -8,18 +12,17 @@ export class WebGLRenderer {
 	}
 
 	constructor(readonly gl: WebGL2RenderingContext) {
-		gl.enable(gl.BLEND);
-		gl.enable(gl.DEPTH_TEST);
-		gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+		this.#applyPipelineState(PipelineState.default);
+		this.#textureFilterAnisotropic = gl.getExtension("EXT_texture_filter_anisotropic") ?? undefined;
 
 		this.derivedUniforms.draw.uModelViewProjection = {
 			dependsOn: ["uProjection", "uView", "uModel"],
 			get: (dependencies) => {
-				const projection = (dependencies.uProjection as ShaderUniformMatrix4).value;
-				const view = (dependencies.uView as ShaderUniformMatrix4).value;
-				const model = (dependencies.uModel as ShaderUniformMatrix4).value;
+				const projection = dependencies.uProjection as Matrix4;
+				const view = dependencies.uView as Matrix4;
+				const model = dependencies.uModel as Matrix4;
 
-				return uniforms.matrix4(projection.clone().multiply(view).multiply(model));
+				return projection.clone().multiply(view).multiply(model);
 			},
 		};
 	}
@@ -30,8 +33,44 @@ export class WebGLRenderer {
 		return new WebGLRenderer(gl);
 	}
 
-	clear() {
-		this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
+	setClearColor(color: Color) {
+		this.gl.clearColor(color.r / 255, color.g / 255, color.b / 255, color.a / 255);
+	}
+
+	setClearDepth(depth: number) {
+		this.gl.clearDepth(depth);
+	}
+
+	setClearStencil(stencil: number) {
+		this.gl.clearStencil(stencil);
+	}
+
+	clear({ color = true, depth = true, stencil = false } = {}) {
+		let bits = 0;
+		if (color) bits |= this.gl.COLOR_BUFFER_BIT;
+		if (depth) bits |= this.gl.DEPTH_BUFFER_BIT;
+		if (stencil) bits |= this.gl.STENCIL_BUFFER_BIT;
+		this.gl.clear(bits);
+	}
+
+	#currentTarget: Framebuffer | undefined = undefined;
+
+	setFramebuffer(target: Framebuffer | undefined) {
+		if (this.#currentTarget === target) return;
+		
+		this.#currentTarget = target;
+		this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, target ? this.#getFramebuffer(target) : null);
+		
+		// invalidate depth-attachment
+		this.#lastPipelineState = null;
+		
+		if (target) {
+			this.gl.viewport(0, 0, target.width, target.height);
+		}
+	}
+
+	setViewport(viewport: Rect) {
+		this.gl.viewport(viewport.minX, viewport.minY, viewport.width, viewport.height);
 	}
 
 	#passUniforms: UniformList = {};
@@ -40,9 +79,16 @@ export class WebGLRenderer {
 	}
 
 	#lastMaterial = new Map<WebGLProgram, Material>();
+	#lastPipelineState: PipelineState | null = null;
+	#textureUnitCounter = 0;
+
 	drawMesh(mesh: Mesh, uniforms: UniformList = {}) {
 		const program = this.#getProgram(mesh.material.shader);
 		this.gl.useProgram(program);
+
+		this.#applyPipelineStateIfChanged(mesh.material.pipelineState);
+
+		this.#textureUnitCounter = 0;
 
 		const uniformLocations = this.#cache.uniforms.getOrInsertComputed(program, ()=>new Map());
 		const passDerivedUniforms = this.#resolveDerivedUniforms(program, "pass", this.#passUniforms, uniformLocations);
@@ -76,6 +122,56 @@ export class WebGLRenderer {
 			0
 		);
 		this.gl.bindVertexArray(null);
+	}
+
+	#applyPipelineStateIfChanged(state: PipelineState) {
+		if (this.#lastPipelineState === state) return;
+		this.#applyPipelineState(state);
+		this.#lastPipelineState = state;
+	}
+
+	#applyPipelineState(state: PipelineState) {
+		const gl = this.gl;
+		const last = this.#lastPipelineState;
+
+		if (last?.depthTest !== state.depthTest) {
+			if (state.depthTest) gl.enable(gl.DEPTH_TEST);
+			else gl.disable(gl.DEPTH_TEST);
+		}
+		if (last?.depthWrite !== state.depthWrite) {
+			gl.depthMask(state.depthWrite);
+		}
+		if (last?.depthFunc !== state.depthFunc) {
+			gl.depthFunc(glDepthFunc(state.depthFunc));
+		}
+		if (last?.blend !== state.blend) {
+			if (state.blend === BlendMode.None) {
+				gl.disable(gl.BLEND);
+			} else {
+				gl.enable(gl.BLEND);
+				const [sf, df] = glBlendFunc(state.blend);
+				gl.blendFunc(sf, df);
+			}
+		}
+		if (last?.cullFace !== state.cullFace) {
+			if (state.cullFace === CullFace.None) {
+				gl.disable(gl.CULL_FACE);
+			} else {
+				gl.enable(gl.CULL_FACE);
+				gl.cullFace(glCullFace(state.cullFace));
+			}
+		}
+		if (last?.frontFace !== state.frontFace) {
+			gl.frontFace(glFrontFace(state.frontFace));
+		}
+		if (last?.colorWriteMask !== state.colorWriteMask) {
+			gl.colorMask(
+				(state.colorWriteMask & ColorWriteMasks.Red) !== 0,
+				(state.colorWriteMask & ColorWriteMasks.Green) !== 0,
+				(state.colorWriteMask & ColorWriteMasks.Blue) !== 0,
+				(state.colorWriteMask & ColorWriteMasks.Alpha) !== 0,
+			);
+		}
 	}
 
 	#resolveDerivedUniforms(
@@ -141,6 +237,9 @@ export class WebGLRenderer {
 		programs: new Map<ShaderModule, WebGLProgram>(),
 		uniforms: new Map<WebGLProgram, Map<string, WebGLUniformLocation | null>>(),
 		geometryBuffers: new Map<Geometry, WebGLGeometryBuffers>(),
+		textures: new Map<Texture, WebGLTexture>(),
+		samplers: new Map<Sampler, WebGLSampler>(),
+		framebuffers: new Map<Framebuffer, WebGLFramebuffer>(),
 	}
 
 	#getProgram(shaderModule: ShaderModule): WebGLProgram {
@@ -164,6 +263,69 @@ export class WebGLRenderer {
 		this.gl.bindBuffer(kind, null);
 		buffer.isDirty = false;
 	}
+	
+	#getAndSyncTexture(texture: Texture): WebGLTexture {
+		const out = this.#cache.textures.getOrInsertComputed(texture, () => {
+			const gl = this.gl;
+			const glTexture = gl.createTexture();
+			texture.isDirty = true;
+			return glTexture;
+		});
+		this.#syncTexture(texture, out);
+		return out;
+	}
+
+	#syncTexture(texture: Texture, glTexture: WebGLTexture) {
+		if (!texture.isDirty) return;
+
+		const gl = this.gl;
+		gl.bindTexture(gl.TEXTURE_2D, glTexture);
+		
+		const [internalFormat, format, type] = glTextureFormat(texture.format);
+		
+		const source = texture.source;
+
+		gl.texImage2D(gl.TEXTURE_2D, 0, internalFormat, texture.width, texture.height, 0, format, type, source as ArrayBufferView | null);
+		
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, texture.mipmaps ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR);
+		if (texture.mipmaps) gl.generateMipmap(gl.TEXTURE_2D);
+
+		gl.bindTexture(gl.TEXTURE_2D, null);
+		
+		texture.isDirty = false;
+	}
+
+	#getSampler(sampler: Sampler): WebGLSampler {
+		return this.#cache.samplers.getOrInsertComputed(sampler, () => {
+			const gl = this.gl;
+			const glSampler = gl.createSampler();
+			gl.samplerParameteri(glSampler, gl.TEXTURE_MIN_FILTER, glTextureFilter(sampler.minFilter));
+			gl.samplerParameteri(glSampler, gl.TEXTURE_MAG_FILTER, glTextureFilter(sampler.magFilter));
+			gl.samplerParameteri(glSampler, gl.TEXTURE_WRAP_S, glTextureWrap(sampler.wrapS));
+			gl.samplerParameteri(glSampler, gl.TEXTURE_WRAP_T, glTextureWrap(sampler.wrapT));
+			if (sampler.compareFunc !== CompareFunc.None) {
+				gl.samplerParameteri(glSampler, gl.TEXTURE_COMPARE_MODE, gl.COMPARE_REF_TO_TEXTURE);
+				gl.samplerParameteri(glSampler, gl.TEXTURE_COMPARE_FUNC, glCompareFunc(sampler.compareFunc));
+			} else {
+				gl.samplerParameteri(glSampler, gl.TEXTURE_COMPARE_MODE, gl.NONE);
+			}
+			if (sampler.maxAnisotropy > 1) {
+				const ext = this.#textureFilterAnisotropic;
+				if (ext) {
+					gl.samplerParameterf(glSampler, ext.TEXTURE_MAX_ANISOTROPY_EXT, sampler.maxAnisotropy);
+				}
+			}
+			return glSampler;
+		});
+	}
+
+	#textureFilterAnisotropic: EXT_texture_filter_anisotropic | undefined = undefined;
+
+	#getFramebuffer(framebuffer: Framebuffer): WebGLFramebuffer {
+		return this.#cache.framebuffers.getOrInsertComputed(framebuffer, () => {
+			return createFramebuffer(this.gl, framebuffer, (texture) => this.#getAndSyncTexture(texture));
+		});
+	}
 
 	#validatedAttributeLayouts = new Map<WebGLProgram, WeakSet<VertexAttributeLayout>>();
 	#validateProgramAttributeLayout(program: WebGLProgram, attributeLayout: VertexAttributeLayout) {
@@ -186,10 +348,11 @@ export class WebGLRenderer {
 	}
 
 	#applyUniforms(program: WebGLProgram, uniforms: UniformList, locations: Map<string, WebGLUniformLocation | null>, required: boolean) {
+		const gl = this.gl;
 		for (const key in uniforms) {
 			const uniform = uniforms[key]!;
 			const location = locations.getOrInsertComputed(key, ()=> {
-				const out = this.gl.getUniformLocation(program, key);
+				const out = gl.getUniformLocation(program, key);
 				if (!out) {
 					if (required) throw new Error(`Uniform "${key}" not found in shader.`);
 					return null;
@@ -197,10 +360,37 @@ export class WebGLRenderer {
 				return out;
 			});
 
-			if (location) {
-				uniform.bindGl(this.gl, location);
+			if (!location) continue;
+
+			if (uniform instanceof Int32) {
+				gl.uniform1i(location, uniform.value);
+			} else if (uniform instanceof Float32) {
+				gl.uniform1f(location, uniform.value);
+			} else if (uniform instanceof Matrix4) {
+				gl.uniformMatrix4fv(location, false, uniform.toColumnMajor(Float32Array));
+			} else if (uniform instanceof Vector2) {
+				gl.uniform2f(location, uniform.x, uniform.y);
+			} else if (uniform instanceof Vector3) {
+				gl.uniform3f(location, uniform.x, uniform.y, uniform.z);
+			} else if (uniform instanceof Texture) {
+				const unit = this.#claimTextureUnit();
+				gl.activeTexture(gl.TEXTURE0 + unit);
+				gl.bindTexture(gl.TEXTURE_2D, this.#getAndSyncTexture(uniform));
+				gl.bindSampler(unit, this.#getSampler(uniform.sampler));
+				gl.uniform1i(location, unit);
+			} else {
+				assertNever(uniform);
 			}
 		}
+	}
+
+	#claimTextureUnit() {
+		const unit = this.#textureUnitCounter++;
+		const max = this.gl.getParameter(this.gl.MAX_TEXTURE_IMAGE_UNITS) as number;
+		if (unit >= max) {
+			throw new Error(`Texture unit overflow: shader requires more than ${max} texture units in a single draw.`);
+		}
+		return unit;
 	}
 }
 
@@ -237,55 +427,266 @@ export interface DerivedUniformDefinition<TUniform extends ShaderUniform = Shade
 export class Material<TUniforms extends UniformList = UniformList> {
 	readonly shader: ShaderModule;
 	readonly uniforms: TUniforms;
+	readonly pipelineState: PipelineState;
 	needsUniformUpdate = true;
 
 	constructor(options: {
 		readonly shader: ShaderModule,
-		readonly uniforms: TUniforms
+		readonly uniforms: TUniforms,
+		readonly pipelineState?: PipelineState,
 	}) {
 		this.shader = options.shader;
 		this.uniforms = options.uniforms;
+		this.pipelineState = options.pipelineState ?? PipelineState.default;
 	}
 }
 
-export interface ShaderUniform {
-	bindGl(gl: WebGL2RenderingContext, location: WebGLUniformLocation): void;
-}
-
-export class ShaderUniformInt implements ShaderUniform {
+export class Int32 {
 	constructor(public value: number) {}
-
-	bindGl(gl: WebGL2RenderingContext, location: WebGLUniformLocation) {
-		gl.uniform1i(location, this.value);
-	}
 }
 
-export class ShaderUniformFloat implements ShaderUniform {
+export class Float32 {
 	constructor(public value: number) {}
-
-	bindGl(gl: WebGL2RenderingContext, location: WebGLUniformLocation) {
-		gl.uniform1f(location, this.value);
-	}
 }
 
-export class ShaderUniformMatrix4 implements ShaderUniform {
-	constructor(public value: Matrix4) {}
+export const int32 = (value: number) => new Int32(value);
+export const float32 = (value: number) => new Float32(value);
 
-	bindGl(gl: WebGL2RenderingContext, location: WebGLUniformLocation) {
-		gl.uniformMatrix4fv(location, false, this.value.toColumnMajor(Float32Array));
-	}
-}
-
-export namespace uniforms {
-	export const int = (value: number) => new ShaderUniformInt(value);
-	export const float = (value: number) => new ShaderUniformFloat(value);
-	export const matrix4 = (value: Matrix4) => new ShaderUniformMatrix4(value);
-}
+export type ShaderUniform = Int32 | Float32 | Matrix4 | Vector2 | Vector3 | Texture/*|  Vector4  | Texture | Sampler */;
 
 export enum RenderPrimitiveType {
 	Points,
 	Lines,
 	Triangles,
+}
+
+export enum DepthFunc {
+	Never,
+	Less,
+	Equal,
+	LessOrEqual,
+	Greater,
+	NotEqual,
+	GreaterOrEqual,
+	Always,
+}
+
+export enum BlendMode {
+	None,
+	Alpha,
+	Additive,
+	Premultiplied,
+}
+
+export enum CullFace {
+	None,
+	Back,
+	Front,
+}
+
+export enum FrontFace {
+	Clockwise,
+	CounterClockwise,
+}
+
+export enum ColorWriteMasks {
+	Red = 1,
+	Green = 2,
+	Blue = 4,
+	Alpha = 8,
+
+	None = 0,
+	All = Red | Green | Blue | Alpha,
+}
+
+export type ColorWriteMask = number;
+
+export class PipelineState {
+	readonly depthTest: boolean;
+	readonly depthWrite: boolean;
+	readonly depthFunc: DepthFunc;
+	readonly blend: BlendMode;
+	readonly cullFace: CullFace;
+	readonly frontFace: FrontFace;
+	readonly colorWriteMask: ColorWriteMask;
+
+	constructor(options: {
+		depthTest?: boolean,
+		depthWrite?: boolean,
+		depthFunc?: DepthFunc,
+		blend?: BlendMode,
+		cullFace?: CullFace,
+		frontFace?: FrontFace,
+		colorWriteMask?: ColorWriteMask,
+	} = {}) {
+		this.depthTest = options.depthTest ?? true;
+		this.depthWrite = options.depthWrite ?? true;
+		this.depthFunc = options.depthFunc ?? DepthFunc.Less;
+		this.blend = options.blend ?? BlendMode.Alpha;
+		this.cullFace = options.cullFace ?? CullFace.None;
+		this.frontFace = options.frontFace ?? FrontFace.CounterClockwise;
+		this.colorWriteMask = options.colorWriteMask ?? ColorWriteMasks.All;
+	}
+
+	static readonly default = new PipelineState();
+	static readonly opaque = new PipelineState({ blend: BlendMode.None });
+	static readonly additive = new PipelineState({ blend: BlendMode.Additive, depthWrite: false });
+	static readonly transparent = new PipelineState({ blend: BlendMode.Alpha, depthWrite: false });
+}
+
+export enum TextureFormat {
+	R8,
+	RG8,
+	RGBA8,
+	R16F,
+	RG16F,
+	RGBA16F,
+	R32F,
+	RG32F,
+	RGBA32F,
+	Depth24,
+	Depth24Stencil8,
+}
+
+export enum TextureFilter {
+	Nearest,
+	Linear,
+	NearestMipmapNearest,
+	LinearMipmapNearest,
+	NearestMipmapLinear,
+	LinearMipmapLinear,
+}
+
+export enum TextureWrap {
+	Repeat,
+	ClampToEdge,
+	MirroredRepeat,
+}
+
+export enum CompareFunc {
+	None,
+	Never,
+	Less,
+	Equal,
+	LessOrEqual,
+	Greater,
+	NotEqual,
+	GreaterOrEqual,
+	Always,
+}
+
+export class Texture {
+	isDirty = true;
+	readonly width: number;
+	readonly height: number;
+	readonly format: TextureFormat;
+	readonly mipmaps: boolean;
+	readonly sampler: Sampler;
+	readonly source: TexImageSource | ArrayBufferView | null;
+
+	constructor(options: {
+		width: number,
+		height: number,
+		format?: TextureFormat,
+		mipmaps?: boolean,
+		source?: TexImageSource | ArrayBufferView,
+		sampler?: Sampler,
+	}) {
+		this.width = options.width;
+		this.height = options.height;
+		this.format = options.format ?? TextureFormat.RGBA8;
+		this.mipmaps = options.mipmaps ?? false;
+		this.source = options.source ?? null;
+		this.sampler = options.sampler ?? Sampler.default;
+	}
+
+	setData(source: TexImageSource | ArrayBufferView) {
+		// @ts-expect-error Privately mutable
+		this.source = source;
+		this.isDirty = true;
+	}
+
+	static fromImage({ image, format, mipmaps, sampler }: {
+		image: TexImageSource,
+		format?: TextureFormat,
+		mipmaps?: boolean,
+		sampler?: Sampler,
+	}) {
+		const width = 
+			image instanceof HTMLImageElement ? image.naturalWidth :
+			image instanceof VideoFrame ? image.codedWidth :
+			image.width;
+		const height =
+			image instanceof HTMLImageElement ? image.naturalHeight :
+			image instanceof VideoFrame ? image.codedHeight :
+			image.height;
+			
+
+		return new Texture({
+			width: width,
+			height: height,
+			format: format ?? TextureFormat.RGBA8,
+			mipmaps: mipmaps ?? false,
+			source: image,
+			sampler: sampler ?? Sampler.default,
+		});
+	}
+}
+
+export class Sampler {
+	readonly minFilter: TextureFilter;
+	readonly magFilter: TextureFilter;
+	readonly wrapS: TextureWrap;
+	readonly wrapT: TextureWrap;
+	readonly compareFunc: CompareFunc;
+	readonly maxAnisotropy: number;
+
+	constructor(options: {
+		minFilter?: TextureFilter,
+		magFilter?: TextureFilter,
+		wrapS?: TextureWrap,
+		wrapT?: TextureWrap,
+		compareFunc?: CompareFunc,
+		maxAnisotropy?: number,
+	} = {}) {
+		this.minFilter = options.minFilter ?? TextureFilter.Linear;
+		this.magFilter = options.magFilter ?? TextureFilter.Linear;
+		this.wrapS = options.wrapS ?? TextureWrap.ClampToEdge;
+		this.wrapT = options.wrapT ?? TextureWrap.ClampToEdge;
+		this.compareFunc = options.compareFunc ?? CompareFunc.None;
+		this.maxAnisotropy = options.maxAnisotropy ?? 1;
+	}
+
+	static readonly default = new Sampler();
+	static readonly nearest = new Sampler({ minFilter: TextureFilter.Nearest, magFilter: TextureFilter.Nearest });
+	static readonly linear = new Sampler({ minFilter: TextureFilter.Linear, magFilter: TextureFilter.Linear });
+	static readonly linearMipmap = new Sampler({ minFilter: TextureFilter.LinearMipmapLinear, magFilter: TextureFilter.Linear });
+}
+
+export class Framebuffer {
+	readonly width: number;
+	readonly height: number;
+	readonly colorAttachments: readonly Texture[];
+	readonly depthAttachment: Texture | null;
+
+	constructor(options: {
+		width: number,
+		height: number,
+		colorAttachments?: Texture[],
+		depthAttachment?: Texture | null,
+	}) {
+		this.width = options.width;
+		this.height = options.height;
+		this.colorAttachments = options.colorAttachments ?? [];
+		this.depthAttachment = options.depthAttachment ?? null;
+		for (const attachment of [...this.colorAttachments, this.depthAttachment]) {
+			if (attachment && (attachment.width !== this.width || attachment.height !== this.height)) {
+				throw new Error(
+					`Framebuffer attachment size (${attachment.width}x${attachment.height}) does not match framebuffer size (${this.width}x${this.height}).`
+				);
+			}
+		}
+	}
 }
 
 export enum VertexAttributeType {
@@ -302,8 +703,6 @@ export enum VertexAttributeKind {
 	Float,
 	Integer,
 }
-
-//export type IndexBufferData = Uint16Array | Uint32Array;
 
 export class ShaderBuffer<T extends AllowSharedBufferSource = AllowSharedBufferSource> {
 	isDirty = true;
@@ -603,6 +1002,151 @@ function glGeometryUsage(usage: GeometryUsage) {
 		case GeometryUsage.Dynamic: return WebGL2RenderingContext.DYNAMIC_DRAW;
 		case GeometryUsage.Stream: return WebGL2RenderingContext.STREAM_DRAW;
 		default: assertNever(usage);
+	}
+}
+
+function glDepthFunc(func: DepthFunc) {
+	switch (func) {
+		case DepthFunc.Never: return WebGL2RenderingContext.NEVER;
+		case DepthFunc.Less: return WebGL2RenderingContext.LESS;
+		case DepthFunc.Equal: return WebGL2RenderingContext.EQUAL;
+		case DepthFunc.LessOrEqual: return WebGL2RenderingContext.LEQUAL;
+		case DepthFunc.Greater: return WebGL2RenderingContext.GREATER;
+		case DepthFunc.NotEqual: return WebGL2RenderingContext.NOTEQUAL;
+		case DepthFunc.GreaterOrEqual: return WebGL2RenderingContext.GEQUAL;
+		case DepthFunc.Always: return WebGL2RenderingContext.ALWAYS;
+		default: assertNever(func);
+	}
+}
+
+function glBlendFunc(mode: BlendMode): [GLenum, GLenum] {
+	switch (mode) {
+		case BlendMode.None: return [WebGL2RenderingContext.ONE, WebGL2RenderingContext.ZERO];
+		case BlendMode.Alpha: return [WebGL2RenderingContext.SRC_ALPHA, WebGL2RenderingContext.ONE_MINUS_SRC_ALPHA];
+		case BlendMode.Additive: return [WebGL2RenderingContext.SRC_ALPHA, WebGL2RenderingContext.ONE];
+		case BlendMode.Premultiplied: return [WebGL2RenderingContext.ONE, WebGL2RenderingContext.ONE_MINUS_SRC_ALPHA];
+		default: assertNever(mode);
+	}
+}
+
+function glCullFace(face: CullFace) {
+	switch (face) {
+		case CullFace.None: throw new Error("CullFace.None should be handled by disabling culling, not by calling gl.cullFace.");
+		case CullFace.Back: return WebGL2RenderingContext.BACK;
+		case CullFace.Front: return WebGL2RenderingContext.FRONT;
+		default: assertNever(face);
+	}
+}
+
+function glFrontFace(face: FrontFace) {
+	switch (face) {
+		case FrontFace.Clockwise: return WebGL2RenderingContext.CW;
+		case FrontFace.CounterClockwise: return WebGL2RenderingContext.CCW;
+		default: assertNever(face);
+	}
+}
+
+function glTextureFilter(filter: TextureFilter) {
+	switch (filter) {
+		case TextureFilter.Nearest: return WebGL2RenderingContext.NEAREST;
+		case TextureFilter.Linear: return WebGL2RenderingContext.LINEAR;
+		case TextureFilter.NearestMipmapNearest: return WebGL2RenderingContext.NEAREST_MIPMAP_NEAREST;
+		case TextureFilter.LinearMipmapNearest: return WebGL2RenderingContext.LINEAR_MIPMAP_NEAREST;
+		case TextureFilter.NearestMipmapLinear: return WebGL2RenderingContext.NEAREST_MIPMAP_LINEAR;
+		case TextureFilter.LinearMipmapLinear: return WebGL2RenderingContext.LINEAR_MIPMAP_LINEAR;
+		default: assertNever(filter);
+	}
+}
+
+function glTextureWrap(wrap: TextureWrap) {
+	switch (wrap) {
+		case TextureWrap.Repeat: return WebGL2RenderingContext.REPEAT;
+		case TextureWrap.ClampToEdge: return WebGL2RenderingContext.CLAMP_TO_EDGE;
+		case TextureWrap.MirroredRepeat: return WebGL2RenderingContext.MIRRORED_REPEAT;
+		default: assertNever(wrap);
+	}
+}
+
+function glCompareFunc(func: CompareFunc) {
+	switch (func) {
+		case CompareFunc.None: throw new Error("CompareFunc.None should be handled by disabling compare mode, not by calling gl.TEXTURE_COMPARE_FUNC.");
+		case CompareFunc.Never: return WebGL2RenderingContext.NEVER;
+		case CompareFunc.Less: return WebGL2RenderingContext.LESS;
+		case CompareFunc.Equal: return WebGL2RenderingContext.EQUAL;
+		case CompareFunc.LessOrEqual: return WebGL2RenderingContext.LEQUAL;
+		case CompareFunc.Greater: return WebGL2RenderingContext.GREATER;
+		case CompareFunc.NotEqual: return WebGL2RenderingContext.NOTEQUAL;
+		case CompareFunc.GreaterOrEqual: return WebGL2RenderingContext.GEQUAL;
+		case CompareFunc.Always: return WebGL2RenderingContext.ALWAYS;
+		default: assertNever(func);
+	}
+}
+
+function glTextureFormat(format: TextureFormat): [GLenum, GLenum, GLenum] {
+	// returns [internalFormat, format, type]
+	switch (format) {
+		case TextureFormat.R8: return [WebGL2RenderingContext.R8, WebGL2RenderingContext.RED, WebGL2RenderingContext.UNSIGNED_BYTE];
+		case TextureFormat.RG8: return [WebGL2RenderingContext.RG8, WebGL2RenderingContext.RG, WebGL2RenderingContext.UNSIGNED_BYTE];
+		case TextureFormat.RGBA8: return [WebGL2RenderingContext.RGBA8, WebGL2RenderingContext.RGBA, WebGL2RenderingContext.UNSIGNED_BYTE];
+		case TextureFormat.R16F: return [WebGL2RenderingContext.R16F, WebGL2RenderingContext.RED, WebGL2RenderingContext.HALF_FLOAT];
+		case TextureFormat.RG16F: return [WebGL2RenderingContext.RG16F, WebGL2RenderingContext.RG, WebGL2RenderingContext.HALF_FLOAT];
+		case TextureFormat.RGBA16F: return [WebGL2RenderingContext.RGBA16F, WebGL2RenderingContext.RGBA, WebGL2RenderingContext.HALF_FLOAT];
+		case TextureFormat.R32F: return [WebGL2RenderingContext.R32F, WebGL2RenderingContext.RED, WebGL2RenderingContext.FLOAT];
+		case TextureFormat.RG32F: return [WebGL2RenderingContext.RG32F, WebGL2RenderingContext.RG, WebGL2RenderingContext.FLOAT];
+		case TextureFormat.RGBA32F: return [WebGL2RenderingContext.RGBA32F, WebGL2RenderingContext.RGBA, WebGL2RenderingContext.FLOAT];
+		case TextureFormat.Depth24: return [WebGL2RenderingContext.DEPTH_COMPONENT24, WebGL2RenderingContext.DEPTH_COMPONENT, WebGL2RenderingContext.UNSIGNED_INT];
+		case TextureFormat.Depth24Stencil8: return [WebGL2RenderingContext.DEPTH24_STENCIL8, WebGL2RenderingContext.DEPTH_STENCIL, WebGL2RenderingContext.UNSIGNED_INT_24_8];
+		default: assertNever(format);
+	}
+}
+
+function createFramebuffer(
+	gl: WebGL2RenderingContext,
+	framebuffer: Framebuffer,
+	textureProvider: (texture: Texture) => WebGLTexture,
+): WebGLFramebuffer {
+	const glFramebuffer = gl.createFramebuffer();
+	gl.bindFramebuffer(gl.FRAMEBUFFER, glFramebuffer);
+
+	const colorAttachments = framebuffer.colorAttachments;
+	const drawBuffers: GLenum[] = [];
+	for (let i = 0; i < colorAttachments.length; i++) {
+		const texture = colorAttachments[i]!;
+		const glTextureObj = textureProvider(texture);
+		gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + i, gl.TEXTURE_2D, glTextureObj, 0);
+		drawBuffers.push(gl.COLOR_ATTACHMENT0 + i);
+	}
+	if (drawBuffers.length > 0) {
+		gl.drawBuffers(drawBuffers);
+	}
+
+	if (framebuffer.depthAttachment) {
+		const glTextureObj = textureProvider(framebuffer.depthAttachment);
+		const attachmentPoint = framebuffer.depthAttachment.format === TextureFormat.Depth24Stencil8
+			? gl.DEPTH_STENCIL_ATTACHMENT
+			: gl.DEPTH_ATTACHMENT;
+		gl.framebufferTexture2D(gl.FRAMEBUFFER, attachmentPoint, gl.TEXTURE_2D, glTextureObj, 0);
+	}
+
+	const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+	if (status !== gl.FRAMEBUFFER_COMPLETE) {
+		const statusName = framebufferStatusName(status);
+		throw new Error(`Framebuffer is incomplete: ${statusName}`);
+	}
+
+	gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+	return glFramebuffer;
+}
+
+function framebufferStatusName(status: GLenum): string {
+	switch (status) {
+		case WebGL2RenderingContext.FRAMEBUFFER_COMPLETE: return "FRAMEBUFFER_COMPLETE";
+		case WebGL2RenderingContext.FRAMEBUFFER_INCOMPLETE_ATTACHMENT: return "FRAMEBUFFER_INCOMPLETE_ATTACHMENT";
+		case WebGL2RenderingContext.FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT: return "FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT";
+		case WebGL2RenderingContext.FRAMEBUFFER_INCOMPLETE_DIMENSIONS: return "FRAMEBUFFER_INCOMPLETE_DIMENSIONS";
+		case WebGL2RenderingContext.FRAMEBUFFER_UNSUPPORTED: return "FRAMEBUFFER_UNSUPPORTED";
+		case WebGL2RenderingContext.FRAMEBUFFER_INCOMPLETE_MULTISAMPLE: return "FRAMEBUFFER_INCOMPLETE_MULTISAMPLE";
+		default: return `0x${status.toString(16)}`;
 	}
 }
 

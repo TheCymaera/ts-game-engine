@@ -12,7 +12,7 @@ import { Color } from "@open-utilities/rendering/Color";
 import { buildAxesMesh, buildGridMesh } from "../open-utilities/rendering/debugMeshes.js";
 import { buildCuboidBetween, buildCircleArc, buildConeWire, buildUvSphere } from "../open-utilities/rendering/geometryBuilders.js";
 import type { GeometryData } from "../open-utilities/rendering/geometryBuilders.js";
-import { BufferBuilder, Geometry, GeometryUsage, Material, Mesh, RenderPrimitiveType, ShaderModule, VertexAttributeKind, VertexAttributeLayout, VertexAttributeType, WebGLRenderer, ShaderBuffer, uniforms } from "@open-utilities/rendering/WebGLRenderer";
+import { BufferBuilder, Geometry, GeometryUsage, Material, Mesh, RenderPrimitiveType, ShaderModule, VertexAttributeKind, VertexAttributeLayout, VertexAttributeType, WebGLRenderer, ShaderBuffer, float32 } from "@open-utilities/rendering/WebGLRenderer";
 import { dedent } from "@open-utilities/string/dedent";
 
 const canvas = document.querySelector("canvas")!;
@@ -24,8 +24,8 @@ const renderer = WebGLRenderer.fromCanvas(canvas);
 renderer.gl.clearColor(0.03, 0.04, 0.07, 1);
 
 const passUniforms = {
-	uProjection: uniforms.matrix4(Matrix4.identity()),
-	uView: uniforms.matrix4(Matrix4.identity()),
+	uProjection: Matrix4.identity(),
+	uView: Matrix4.identity(),
 };
 
 const chain = IKChain3D.new({
@@ -144,18 +144,18 @@ const solidLayout = new VertexAttributeLayout()
 const shadedMaterial = new Material({
 	shader: shadedShader,
 	uniforms: {
-		uAmbient: uniforms.float(0.3),
-		uDiffuseA: uniforms.float(0.7),
-		uDiffuseB: uniforms.float(0.2),
+		uAmbient: float32(0.3),
+		uDiffuseA: float32(0.7),
+		uDiffuseB: float32(0.2),
 	},
 });
 
 const unshadedMaterial = new Material({
 	shader: shadedShader,
 	uniforms: {
-		uAmbient: uniforms.float(1),
-		uDiffuseA: uniforms.float(0),
-		uDiffuseB: uniforms.float(0),
+		uAmbient: float32(1),
+		uDiffuseA: float32(0),
+		uDiffuseB: float32(0),
 	},
 });
 
@@ -330,7 +330,7 @@ AnimationFrameScheduler.periodic(({ elapsedTime }) => {
 	const effector = nodes.at(-1)!.position;
 	orbitAngle += elapsedTime.seconds * orbitSpeed;
 
-	passUniforms.uView.value = Matrix4.lookAt({
+	passUniforms.uView = Matrix4.lookAt({
 		eye: Vector3.new(7.4, 7.0, 0).rotateY(orbitAngle),
 		target: pose.position.clone().add(Vector3.new(0, 1.3, 0)),
 		up: Vector3.new(0, 1, 0),
@@ -370,7 +370,7 @@ function updateCanvasDimensions() {
 	canvas.width = width;
 	canvas.height = height;
 	renderer.gl.viewport(0, 0, width, height);
-	passUniforms.uProjection.value = Matrix4.perspective({
+	passUniforms.uProjection = Matrix4.perspective({
 		fovy: Math.PI / 3,
 		aspectRatio: width / height,
 		near: 0.1,
@@ -380,7 +380,7 @@ function updateCanvasDimensions() {
 
 function drawMesh(mesh: Mesh, modelTransform = Matrix4.identity()) {
 	renderer.drawMesh(mesh, {
-		uModel: uniforms.matrix4(modelTransform),
+		uModel: modelTransform,
 	});
 }
 

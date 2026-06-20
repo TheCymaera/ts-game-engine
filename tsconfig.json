@@ -22,6 +22,8 @@
 			"@open-utilities/*": ["./src/open-utilities/*"],
 			"@physics2D/*": ["./src/physics2D/*"],
 			"@plugins/*": ["./src/plugins/*"],
-		}
+		},
+
+		"types": ["vite/client"]
 	}
 }
