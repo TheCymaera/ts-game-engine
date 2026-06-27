@@ -3,7 +3,7 @@ import { Matrix4 } from "@open-utilities/maths/Matrix4";
 import { Rect } from "@open-utilities/maths/Rect";
 import { Vector2 } from "@open-utilities/maths/Vector2";
 import { AnimationFrameScheduler } from "@open-utilities/rendering/AnimationFrameScheduler";
-import { dedent } from "@open-utilities/string/dedent";
+import { dedent } from "@open-utilities/strings/dedent";
 import { renderingPlugin } from "@plugins/renderingPlugin";
 import { app, cameraShake, debugText, mouse, renderer, tileMap } from "./resources";
 import * as resources from "./resources";

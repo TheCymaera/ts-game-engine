@@ -4,6 +4,8 @@ import type { Color } from "./Color.js";
 import type { Rect } from "../maths/Rect.js";
 import { Vector2 } from "@open-utilities/maths/Vector2.js";
 import { Vector3 } from "@open-utilities/maths/Vector3.js";
+export { Int32, Float32, int32, float32 } from "./Struct.js";
+import { Int32, Float32 } from "./Struct.js";
 
 export class WebGLRenderer {
 	readonly derivedUniforms: { readonly [scope in UniformScope]: Record<string, DerivedUniformDefinition> } = {
@@ -87,6 +89,11 @@ export class WebGLRenderer {
 		this.gl.useProgram(program);
 
 		this.#applyPipelineStateIfChanged(mesh.material.pipelineState);
+
+		// bind uniform buffers declared on the material (per binding point)
+		for (const [bindingPoint, buffer] of mesh.material.uniformGroups) {
+			this.#bindUniformBuffer(bindingPoint, buffer);
+		}
 
 		this.#textureUnitCounter = 0;
 
@@ -240,6 +247,7 @@ export class WebGLRenderer {
 		textures: new Map<Texture, WebGLTexture>(),
 		samplers: new Map<Sampler, WebGLSampler>(),
 		framebuffers: new Map<Framebuffer, WebGLFramebuffer>(),
+		uniformBuffers: new Map<ShaderBuffer<ArrayBuffer>, WebGLBuffer>(),
 	}
 
 	#getProgram(shaderModule: ShaderModule): WebGLProgram {
@@ -259,7 +267,7 @@ export class WebGLRenderer {
 	#syncBuffer(buffer: ShaderBuffer, glBuffer: WebGLBuffer, kind: GLenum) {
 		if (!buffer.isDirty) return;
 		this.gl.bindBuffer(kind, glBuffer);
-		this.gl.bufferData(kind, buffer.buffer, glGeometryUsage(buffer.usage));
+		this.gl.bufferData(kind, buffer.buffer, glBufferUsage(buffer.usage));
 		this.gl.bindBuffer(kind, null);
 		buffer.isDirty = false;
 	}
@@ -325,6 +333,37 @@ export class WebGLRenderer {
 		return this.#cache.framebuffers.getOrInsertComputed(framebuffer, () => {
 			return createFramebuffer(this.gl, framebuffer, (texture) => this.#getAndSyncTexture(texture));
 		});
+	}
+
+	#getAndSyncUniformBuffer(buffer: ShaderBuffer<ArrayBuffer>): WebGLBuffer {
+		const glBuffer = this.#cache.uniformBuffers.getOrInsertComputed(buffer, () => {
+			const gl = this.gl;
+			const out = gl.createBuffer();
+			buffer.isDirty = true;
+			return out;
+		});
+		this.#syncUniformBuffer(buffer, glBuffer);
+		return glBuffer;
+	}
+
+	#syncUniformBuffer(buffer: ShaderBuffer<ArrayBuffer>, glBuffer: WebGLBuffer) {
+		if (!buffer.isDirty) return;
+		const gl = this.gl;
+		gl.bindBuffer(gl.UNIFORM_BUFFER, glBuffer);
+		gl.bufferData(gl.UNIFORM_BUFFER, buffer.buffer, glBufferUsage(buffer.usage));
+		gl.bindBuffer(gl.UNIFORM_BUFFER, null);
+		buffer.isDirty = false;
+	}
+
+	#boundUniformBuffers = new Map<number, ShaderBuffer<ArrayBuffer>>();
+
+	#bindUniformBuffer(bindingPoint: number, buffer: ShaderBuffer<ArrayBuffer>) {
+		// Skip re-binding if the same buffer is already bound at this point
+		// and hasn't been updated since (isDirty would require a re-sync).
+		if (this.#boundUniformBuffers.get(bindingPoint) === buffer && !buffer.isDirty) return;
+		const glBuffer = this.#getAndSyncUniformBuffer(buffer);
+		this.gl.bindBufferBase(this.gl.UNIFORM_BUFFER, bindingPoint, glBuffer);
+		this.#boundUniformBuffers.set(bindingPoint, buffer);
 	}
 
 	#validatedAttributeLayouts = new Map<WebGLProgram, WeakSet<VertexAttributeLayout>>();
@@ -428,29 +467,26 @@ export class Material<TUniforms extends UniformList = UniformList> {
 	readonly shader: ShaderModule;
 	readonly uniforms: TUniforms;
 	readonly pipelineState: PipelineState;
+	readonly uniformGroups: Map<number, ShaderBuffer<ArrayBuffer>> = new Map();
 	needsUniformUpdate = true;
 
 	constructor(options: {
 		readonly shader: ShaderModule,
 		readonly uniforms: TUniforms,
 		readonly pipelineState?: PipelineState,
+		readonly uniformGroups?: ReadonlyMap<number, ShaderBuffer<ArrayBuffer>> | Record<number, ShaderBuffer<ArrayBuffer>>,
 	}) {
 		this.shader = options.shader;
 		this.uniforms = options.uniforms;
 		this.pipelineState = options.pipelineState ?? PipelineState.default;
+		if (options.uniformGroups) {
+			const entries: Iterable<readonly [number, ShaderBuffer<ArrayBuffer>]> = options.uniformGroups instanceof Map
+				? options.uniformGroups
+				: Object.entries(options.uniformGroups).map(([k, v]) => [Number(k), v] as const);
+			for (const [k, v] of entries) this.uniformGroups.set(k, v);
+		}
 	}
 }
-
-export class Int32 {
-	constructor(public value: number) {}
-}
-
-export class Float32 {
-	constructor(public value: number) {}
-}
-
-export const int32 = (value: number) => new Int32(value);
-export const float32 = (value: number) => new Float32(value);
 
 export type ShaderUniform = Int32 | Float32 | Matrix4 | Vector2 | Vector3 | Texture/*|  Vector4  | Texture | Sampler */;
 
@@ -706,7 +742,7 @@ export enum VertexAttributeKind {
 
 export class ShaderBuffer<T extends AllowSharedBufferSource = AllowSharedBufferSource> {
 	isDirty = true;
-	constructor(readonly buffer: T, readonly usage: GeometryUsage) {}
+	constructor(readonly buffer: T, readonly usage: BufferUsage) {}
 
 	set(newBuffer: T) {
 		// @ts-expect-error Privately mutable
@@ -715,8 +751,10 @@ export class ShaderBuffer<T extends AllowSharedBufferSource = AllowSharedBufferS
 	}
 }
 
-export enum GeometryUsage {
-	Static, Dynamic, Stream,
+export enum BufferUsage {
+	Static,
+	Dynamic,
+	Stream,
 }
 
 export class Geometry {
@@ -914,11 +952,11 @@ function createGeometryBuffers(
 ) {
 	const vbo = gl.createBuffer();
 	gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
-	gl.bufferData(gl.ARRAY_BUFFER, geometry.vertices.buffer, glGeometryUsage(geometry.vertices.usage));
+	gl.bufferData(gl.ARRAY_BUFFER, geometry.vertices.buffer, glBufferUsage(geometry.vertices.usage));
 
 	const ibo = gl.createBuffer();
 	gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
-	gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, geometry.indices.buffer, glGeometryUsage(geometry.indices.usage));
+	gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, geometry.indices.buffer, glBufferUsage(geometry.indices.usage));
 	gl.bindBuffer(gl.ARRAY_BUFFER, null);
 	gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
 
@@ -996,11 +1034,11 @@ function glRenderPrimitiveType(primitiveType: RenderPrimitiveType) {
 	}
 }
 
-function glGeometryUsage(usage: GeometryUsage) {
+function glBufferUsage(usage: BufferUsage) {
 	switch (usage) {
-		case GeometryUsage.Static: return WebGL2RenderingContext.STATIC_DRAW;
-		case GeometryUsage.Dynamic: return WebGL2RenderingContext.DYNAMIC_DRAW;
-		case GeometryUsage.Stream: return WebGL2RenderingContext.STREAM_DRAW;
+		case BufferUsage.Static: return WebGL2RenderingContext.STATIC_DRAW;
+		case BufferUsage.Dynamic: return WebGL2RenderingContext.DYNAMIC_DRAW;
+		case BufferUsage.Stream: return WebGL2RenderingContext.STREAM_DRAW;
 		default: assertNever(usage);
 	}
 }

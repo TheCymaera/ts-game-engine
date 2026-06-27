@@ -4,7 +4,7 @@ import { denormalize } from "@open-utilities/maths/denormalize";
 import { Rect } from "@open-utilities/maths/Rect";
 import { Vector2 } from "@open-utilities/maths/Vector2";
 import { AnimationFrameScheduler } from "@open-utilities/rendering/AnimationFrameScheduler";
-import { VertexAttributeLayout, VertexAttributeType, VertexAttributeKind, BufferBuilder, Geometry, Material, Mesh, RenderPrimitiveType, ShaderModule, WebGLRenderer, GeometryUsage, ShaderBuffer, float32 } from "@open-utilities/rendering/WebGLRenderer";
+import { VertexAttributeLayout, VertexAttributeType, VertexAttributeKind, BufferBuilder, Geometry, Material, Mesh, RenderPrimitiveType, ShaderModule, WebGLRenderer, BufferUsage, ShaderBuffer, float32 } from "@open-utilities/rendering/WebGLRenderer";
 
 
 const canvas = document.querySelector("canvas")!;
@@ -21,11 +21,11 @@ const geometry = new Geometry({
 		.appendFloat32(0.5, -0.5).appendUint8(0, 255, 0, 255)
 		.appendFloat32(0.5,  0.5).appendUint8(0, 0, 255, 255)
 		.appendFloat32(-0.5,  0.5).appendUint8(255, 255, 0, 255)
-		.build(), GeometryUsage.Static),
+		.build(), BufferUsage.Static),
 	indices: new ShaderBuffer(new Uint16Array([
 		0, 1, 2,
 		2, 3, 0,
-	]), GeometryUsage.Static),
+	]), BufferUsage.Static),
 	primitiveType: RenderPrimitiveType.Triangles,
 });
 

@@ -1,8 +1,8 @@
-import { dedent } from "@open-utilities/string/dedent.js";
+import { dedent } from "@open-utilities/strings/dedent.js";
 import { Vector3 } from "../maths/Vector3.js";
 import { Color } from "./Color.js";
 import { buildCuboidBetween, GeometryData } from "./geometryBuilders.js";
-import { BufferBuilder, Geometry, GeometryUsage, Material, Mesh, RenderPrimitiveType, ShaderModule, VertexAttributeKind, VertexAttributeLayout, VertexAttributeType, ShaderBuffer } from "./WebGLRenderer.js";
+import { BufferBuilder, Geometry, BufferUsage, Material, Mesh, RenderPrimitiveType, ShaderModule, VertexAttributeKind, VertexAttributeLayout, VertexAttributeType, ShaderBuffer } from "./WebGLRenderer.js";
 
 const unshadedShader = new ShaderModule({
 	vertexShader: dedent/*glsl*/`#version 300 es
@@ -46,7 +46,7 @@ export function buildAxesMesh(options: {
 	yColor?: Color;
 	zColor?: Color;
 	material?: Material;
-	usage?: GeometryUsage;
+	usage?: BufferUsage;
 }): Mesh {
 	const xColor = options.xColor ?? Color.red
 	const yColor = options.yColor ?? Color.green
@@ -86,7 +86,7 @@ export function buildGridMesh(options: {
 	originColor?: Color;
 	lineColor?: Color;
 	material?: Material;
-	usage?: GeometryUsage;
+	usage?: BufferUsage;
 }): Mesh {
 	const builder = new ColoredMeshBuilder();
 
@@ -110,7 +110,7 @@ export function buildGridMesh(options: {
 		}), color);
 	}
 
-	return builder.buildMesh({ material: options.material, usage: options.usage ?? GeometryUsage.Static });
+	return builder.buildMesh({ material: options.material, usage: options.usage ?? BufferUsage.Static });
 }
 
 class ColoredMeshBuilder {
@@ -136,9 +136,9 @@ class ColoredMeshBuilder {
 
 	buildMesh(options?: {
 		material?: Material;
-		usage?: GeometryUsage;
+		usage?: BufferUsage;
 	}) {
-		const usage = options?.usage ?? GeometryUsage.Static;
+		const usage = options?.usage ?? BufferUsage.Static;
 		
 		const indices = this.vertices > 0xffff
 			? new Uint32Array(this.indices)

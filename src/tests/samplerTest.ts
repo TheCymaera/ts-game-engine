@@ -1,6 +1,6 @@
 import { AnimationFrameScheduler } from "@open-utilities/rendering/AnimationFrameScheduler";
 import { Color } from "@open-utilities/rendering/Color";
-import { BufferBuilder, Geometry, GeometryUsage, Material, Mesh, PipelineState, RenderPrimitiveType, Sampler, ShaderBuffer, ShaderModule, Texture, VertexAttributeLayout, VertexAttributeType, WebGLRenderer, float32 } from "@open-utilities/rendering/WebGLRenderer";
+import { BufferBuilder, Geometry, BufferUsage, Material, Mesh, PipelineState, RenderPrimitiveType, Sampler, ShaderBuffer, ShaderModule, Texture, VertexAttributeLayout, VertexAttributeType, WebGLRenderer, float32 } from "@open-utilities/rendering/WebGLRenderer";
 import { Matrix4 } from "@open-utilities/maths/Matrix4";
 import { Vector3 } from "@open-utilities/maths/Vector3";
 import birdImageUrl from "./bird-yellow-and-black.jpg";
@@ -72,8 +72,8 @@ function createQuadMesh(texture: Texture, tint: number): Mesh {
 	return new Mesh({
 		geometry: new Geometry({
 			attributeLayout: quadLayout,
-			vertices: new ShaderBuffer(vertices, GeometryUsage.Static),
-			indices: new ShaderBuffer(indices, GeometryUsage.Static),
+			vertices: new ShaderBuffer(vertices, BufferUsage.Static),
+			indices: new ShaderBuffer(indices, BufferUsage.Static),
 			primitiveType: RenderPrimitiveType.Triangles,
 		}),
 		material: new Material({

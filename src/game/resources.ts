@@ -35,4 +35,4 @@ export const inputMap = new class InputMap {
 
 export const physics2D = new Physics2D();
 
-await new Promise<void>((resolve) => setTimeout(resolve, 100));
+//await new Promise<void>((resolve) => setTimeout(resolve, 100));

@@ -26,7 +26,7 @@ export class Matrix4 {
 	get m34() { return this.elements[cr(2, 3)]!; }
 	get m44() { return this.elements[cr(3, 3)]!; }
 
-	private constructor(private elements: number[]) {}
+	private constructor(readonly elements: number[]) {}
 
 	toColumnMajor(Constructor: Float32ArrayConstructor | Float64ArrayConstructor) {
 		return new Constructor(this.elements);

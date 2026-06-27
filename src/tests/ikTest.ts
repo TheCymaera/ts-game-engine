@@ -12,8 +12,8 @@ import { Color } from "@open-utilities/rendering/Color";
 import { buildAxesMesh, buildGridMesh } from "../open-utilities/rendering/debugMeshes.js";
 import { buildCuboidBetween, buildCircleArc, buildConeWire, buildUvSphere } from "../open-utilities/rendering/geometryBuilders.js";
 import type { GeometryData } from "../open-utilities/rendering/geometryBuilders.js";
-import { BufferBuilder, Geometry, GeometryUsage, Material, Mesh, RenderPrimitiveType, ShaderModule, VertexAttributeKind, VertexAttributeLayout, VertexAttributeType, WebGLRenderer, ShaderBuffer, float32 } from "@open-utilities/rendering/WebGLRenderer";
-import { dedent } from "@open-utilities/string/dedent";
+import { BufferBuilder, Geometry, BufferUsage, Material, Mesh, RenderPrimitiveType, ShaderModule, VertexAttributeKind, VertexAttributeLayout, VertexAttributeType, WebGLRenderer, ShaderBuffer, float32 } from "@open-utilities/rendering/WebGLRenderer";
+import { dedent } from "@open-utilities/strings/dedent.js";
 
 const canvas = document.querySelector("canvas")!;
 
@@ -159,7 +159,7 @@ const unshadedMaterial = new Material({
 	},
 });
 
-function createSolidMesh(geometryData: GeometryData, color: Color, material: Material, usage: GeometryUsage = GeometryUsage.Static) {
+function createSolidMesh(geometryData: GeometryData, color: Color, material: Material, usage = BufferUsage.Static) {
 	const vertexBuffer = new BufferBuilder();
 	for (const vertex of geometryData.vertices) {
 		vertexBuffer.appendFloat32(vertex.position.x, vertex.position.y, vertex.position.z);

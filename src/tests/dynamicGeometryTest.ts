@@ -2,7 +2,7 @@ import { Matrix4 } from "@open-utilities/maths/Matrix4";
 import { Vector3 } from "@open-utilities/maths/Vector3";
 import { AnimationFrameScheduler } from "@open-utilities/rendering/AnimationFrameScheduler";
 import { Color } from "@open-utilities/rendering/Color";
-import { VertexAttributeLayout, Geometry, Material, Mesh, RenderPrimitiveType, ShaderModule, VertexAttributeKind, VertexAttributeType, WebGLRenderer, ShaderBuffer, GeometryUsage, float32 } from "@open-utilities/rendering/WebGLRenderer";
+import { VertexAttributeLayout, Geometry, Material, Mesh, RenderPrimitiveType, ShaderModule, VertexAttributeKind, VertexAttributeType, WebGLRenderer, ShaderBuffer, BufferUsage, float32 } from "@open-utilities/rendering/WebGLRenderer";
 
 const canvas = document.querySelector("canvas")!;
 canvas.width = canvas.clientWidth;
@@ -62,8 +62,8 @@ const vertexBuffer = new ArrayBuffer(layout.stride * vertices.length);
 const geometry = new Geometry({
 	attributeLayout: layout,
 	primitiveType: RenderPrimitiveType.Triangles,
-	vertices: new ShaderBuffer(vertexBuffer, GeometryUsage.Dynamic),
-	indices: new ShaderBuffer(new Uint16Array(indices), GeometryUsage.Static),
+	vertices: new ShaderBuffer(vertexBuffer, BufferUsage.Dynamic),
+	indices: new ShaderBuffer(new Uint16Array(indices), BufferUsage.Static),
 });
 
 const shader = new ShaderModule({
