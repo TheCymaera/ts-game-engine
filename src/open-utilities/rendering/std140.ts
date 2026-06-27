@@ -4,6 +4,7 @@ import { Quaternion } from "../maths/Quaternion.js";
 import { Vector2 } from "../maths/Vector2.js";
 import { Vector3 } from "../maths/Vector3.js";
 import { Float32, Int32, Struct, StructArray, type StructField } from "./Struct.js";
+import { Color } from "./Color.js";
 
 export function createStd140Buffer(field: StructField): ArrayBuffer {
 	const layout = layoutOf(field);
@@ -60,6 +61,16 @@ function layoutOf(field: StructField): Layout {
 			view.setFloat32(offset + 4, field.y, LITTLE_ENDIAN);
 			view.setFloat32(offset + 8, field.z, LITTLE_ENDIAN);
 			view.setFloat32(offset + 12, field.w, LITTLE_ENDIAN);
+		},
+	};
+	if (field instanceof Color) return {
+		alignment: 16,
+		size: 16,
+		write: (view, offset) => {
+			view.setFloat32(offset, field.r / 255, LITTLE_ENDIAN);
+			view.setFloat32(offset + 4, field.g / 255, LITTLE_ENDIAN);
+			view.setFloat32(offset + 8, field.b / 255, LITTLE_ENDIAN);
+			view.setFloat32(offset + 12, field.a / 255, LITTLE_ENDIAN);
 		},
 	};
 	if (field instanceof Matrix4) return {

@@ -2,6 +2,7 @@ import type { Matrix4 } from "@open-utilities/maths/Matrix4";
 import type { Quaternion } from "@open-utilities/maths/Quaternion";
 import type { Vector2 } from "@open-utilities/maths/Vector2";
 import type { Vector3 } from "@open-utilities/maths/Vector3";
+import type { Color } from "./Color";
 
 export class Int32 {
 	value: number;
@@ -26,13 +27,17 @@ export class Struct {
 	[key: string]: StructField;
 }
 
-export type StructField =
+export type StructPrimitives =
 	| Int32
 	| Float32
 	| Vector2
 	| Vector3
 	| Quaternion
-	| Matrix4
+	| Color
+	| Matrix4;
+
+export type StructField =
+	| StructPrimitives
 	| StructArray
 	| Struct;
 

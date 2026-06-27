@@ -1,11 +1,12 @@
 import { assertNever } from "@open-utilities/types/assertNever.js";
 import { Matrix4 } from "../maths/Matrix4.js";
-import type { Color } from "./Color.js";
+import { Color } from "./Color.js";
 import type { Rect } from "../maths/Rect.js";
 import { Vector2 } from "@open-utilities/maths/Vector2.js";
 import { Vector3 } from "@open-utilities/maths/Vector3.js";
 export { Int32, Float32, int32, float32 } from "./Struct.js";
-import { Int32, Float32 } from "./Struct.js";
+import { Int32, Float32, type StructPrimitives } from "./Struct.js";
+import { Quaternion } from "@open-utilities/maths/Quaternion.js";
 
 export class WebGLRenderer {
 	readonly derivedUniforms: { readonly [scope in UniformScope]: Record<string, DerivedUniformDefinition> } = {
@@ -403,23 +404,41 @@ export class WebGLRenderer {
 
 			if (uniform instanceof Int32) {
 				gl.uniform1i(location, uniform.value);
-			} else if (uniform instanceof Float32) {
+				continue;
+			}
+			if (uniform instanceof Float32) {
 				gl.uniform1f(location, uniform.value);
-			} else if (uniform instanceof Matrix4) {
+				continue;
+			}
+			if (uniform instanceof Matrix4) {
 				gl.uniformMatrix4fv(location, false, uniform.toColumnMajor(Float32Array));
-			} else if (uniform instanceof Vector2) {
+				continue;
+			}
+			if (uniform instanceof Vector2) {
 				gl.uniform2f(location, uniform.x, uniform.y);
-			} else if (uniform instanceof Vector3) {
+				continue;
+			}
+			if (uniform instanceof Vector3) {
 				gl.uniform3f(location, uniform.x, uniform.y, uniform.z);
-			} else if (uniform instanceof Texture) {
+				continue;
+			}
+			if (uniform instanceof Quaternion) {
+				gl.uniform4f(location, uniform.x, uniform.y, uniform.z, uniform.w);
+				continue;
+			}
+			if (uniform instanceof Color) {
+				gl.uniform4f(location, uniform.r / 255, uniform.g / 255, uniform.b / 255, uniform.a / 255);
+				continue;
+			}
+			if (uniform instanceof Texture) {
 				const unit = this.#claimTextureUnit();
 				gl.activeTexture(gl.TEXTURE0 + unit);
 				gl.bindTexture(gl.TEXTURE_2D, this.#getAndSyncTexture(uniform));
 				gl.bindSampler(unit, this.#getSampler(uniform.sampler));
 				gl.uniform1i(location, unit);
-			} else {
-				assertNever(uniform);
+				continue;
 			}
+			assertNever(uniform);
 		}
 	}
 
@@ -488,7 +507,7 @@ export class Material<TUniforms extends UniformList = UniformList> {
 	}
 }
 
-export type ShaderUniform = Int32 | Float32 | Matrix4 | Vector2 | Vector3 | Texture/*|  Vector4  | Texture | Sampler */;
+export type ShaderUniform = StructPrimitives | Texture;
 
 export enum RenderPrimitiveType {
 	Points,
