@@ -1,6 +1,6 @@
 import { AnimationFrameScheduler } from "@open-utilities/rendering/AnimationFrameScheduler";
 import { Color } from "@open-utilities/rendering/Color";
-import { BufferBuilder, Geometry, BufferUsage, Material, Mesh, PipelineState, RenderPrimitiveType, Sampler, ShaderBuffer, ShaderModule, Texture, VertexAttributeLayout, VertexAttributeType, WebGLRenderer, float32 } from "@open-utilities/rendering/WebGLRenderer";
+import { BufferBuilder, Geometry, BufferUsage, Material, Mesh, PipelineState, RenderPrimitiveType, Sampler, ShaderBuffer, ShaderModule, Texture2D, VertexAttributeLayout, VertexAttributeType, WebGLRenderer, float32 } from "@open-utilities/rendering/WebGLRenderer";
 import { Matrix4 } from "@open-utilities/maths/Matrix4";
 import { Vector3 } from "@open-utilities/maths/Vector3";
 import birdImageUrl from "./bird-yellow-and-black.jpg";
@@ -13,17 +13,17 @@ const birdImage = new Image();
 birdImage.src = birdImageUrl;
 await birdImage.decode();
 
-const nearestTexture = Texture.fromImage({
+const nearestTexture = Texture2D.fromImage({
 	image: birdImage,
 	sampler: Sampler.nearest,
 });
 
-const linearTexture = Texture.fromImage({
+const linearTexture = Texture2D.fromImage({
 	image: birdImage,
 	sampler: Sampler.linear,
 });
 
-const mipmappedTexture = Texture.fromImage({
+const mipmappedTexture = Texture2D.fromImage({
 	image: birdImage,
 	mipmaps: true,
 	sampler: Sampler.linearMipmap,
@@ -58,7 +58,7 @@ const quadLayout = new VertexAttributeLayout()
 	.append("aPosition", 3, VertexAttributeType.Float32)
 	.append("aTexCoord", 2, VertexAttributeType.Float32);
 
-function createQuadMesh(texture: Texture, tint: number): Mesh {
+function createQuadMesh(texture: Texture2D, tint: number): Mesh {
 	const vertices = new BufferBuilder()
 		// position (x, y, z)   texcoord (u, v)
 		.appendFloat32(-0.5, -0.5, 0,  0, 0)

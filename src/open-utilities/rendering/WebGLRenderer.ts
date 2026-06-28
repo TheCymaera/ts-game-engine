@@ -123,12 +123,23 @@ export class WebGLRenderer {
 		this.gl.bindVertexArray(geometryBuffer.vao);
 
 		// draw
-		this.gl.drawElements(
-			glRenderPrimitiveType(mesh.geometry.primitiveType),
-			mesh.geometry.indices.buffer.length,
-			glIndexType(mesh.geometry.indices.buffer),
-			0
-		);
+		const indexCount = mesh.geometry.indices.buffer.length;
+		if (mesh instanceof InstancedMesh) {
+			this.gl.drawElementsInstanced(
+				glRenderPrimitiveType(mesh.geometry.primitiveType),
+				indexCount,
+				glIndexType(mesh.geometry.indices.buffer),
+				0,
+				mesh.instanceCount,
+			);
+		} else {
+			this.gl.drawElements(
+				glRenderPrimitiveType(mesh.geometry.primitiveType),
+				indexCount,
+				glIndexType(mesh.geometry.indices.buffer),
+				0
+			);
+		}
 		this.gl.bindVertexArray(null);
 	}
 
@@ -245,7 +256,7 @@ export class WebGLRenderer {
 		programs: new Map<ShaderModule, WebGLProgram>(),
 		uniforms: new Map<WebGLProgram, Map<string, WebGLUniformLocation | null>>(),
 		geometryBuffers: new Map<Geometry, WebGLGeometryBuffers>(),
-		textures: new Map<Texture, WebGLTexture>(),
+		textures: new Map<TextureLike, WebGLTexture>(),
 		samplers: new Map<Sampler, WebGLSampler>(),
 		framebuffers: new Map<Framebuffer, WebGLFramebuffer>(),
 		uniformBuffers: new Map<ShaderBuffer<ArrayBuffer>, WebGLBuffer>(),
@@ -273,7 +284,7 @@ export class WebGLRenderer {
 		buffer.isDirty = false;
 	}
 	
-	#getAndSyncTexture(texture: Texture): WebGLTexture {
+	#getAndSyncTexture(texture: TextureLike): WebGLTexture {
 		const out = this.#cache.textures.getOrInsertComputed(texture, () => {
 			const gl = this.gl;
 			const glTexture = gl.createTexture();
@@ -284,22 +295,33 @@ export class WebGLRenderer {
 		return out;
 	}
 
-	#syncTexture(texture: Texture, glTexture: WebGLTexture) {
+	#syncTexture(texture: TextureLike, glTexture: WebGLTexture) {
 		if (!texture.isDirty) return;
 
 		const gl = this.gl;
-		gl.bindTexture(gl.TEXTURE_2D, glTexture);
+		
+		const target = this.#targetFromTexture(texture);
+		gl.bindTexture(target, glTexture);
 		
 		const [internalFormat, format, type] = glTextureFormat(texture.format);
-		
-		const source = texture.source;
 
-		gl.texImage2D(gl.TEXTURE_2D, 0, internalFormat, texture.width, texture.height, 0, format, type, source as ArrayBufferView | null);
+		if (texture instanceof Cubemap) {
+			for (let i = 0; i < CUBEMAP_FACES.length; i++) {
+				const face = CUBEMAP_FACES[i]!;
+				const faceTarget = gl.TEXTURE_CUBE_MAP_POSITIVE_X + i;
+				gl.texImage2D(faceTarget, 0, internalFormat, texture.width, texture.height, 0, format, type, texture.faces[face] as ArrayBufferView | null);
+			}
+		} else if (texture instanceof Texture2DArray) {
+			gl.texImage3D(target, 0, internalFormat, texture.width, texture.height, texture.layers, 0, format, type, null);
+		} else {
+			const source = texture.source;
+			gl.texImage2D(target, 0, internalFormat, texture.width, texture.height, 0, format, type, source as ArrayBufferView | null);
+		}
 		
-		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, texture.mipmaps ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR);
-		if (texture.mipmaps) gl.generateMipmap(gl.TEXTURE_2D);
+		gl.texParameteri(target, gl.TEXTURE_MIN_FILTER, texture.mipmaps ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR);
+		if (texture.mipmaps) gl.generateMipmap(target);
 
-		gl.bindTexture(gl.TEXTURE_2D, null);
+		gl.bindTexture(target, null);
 		
 		texture.isDirty = false;
 	}
@@ -430,16 +452,25 @@ export class WebGLRenderer {
 				gl.uniform4f(location, uniform.r / 255, uniform.g / 255, uniform.b / 255, uniform.a / 255);
 				continue;
 			}
-			if (uniform instanceof Texture) {
+			if (uniform instanceof Texture2D ||
+				uniform instanceof Cubemap ||
+				uniform instanceof Texture2DArray) {
 				const unit = this.#claimTextureUnit();
+				const target = this.#targetFromTexture(uniform);
 				gl.activeTexture(gl.TEXTURE0 + unit);
-				gl.bindTexture(gl.TEXTURE_2D, this.#getAndSyncTexture(uniform));
+				gl.bindTexture(target, this.#getAndSyncTexture(uniform));
 				gl.bindSampler(unit, this.#getSampler(uniform.sampler));
 				gl.uniform1i(location, unit);
 				continue;
 			}
 			assertNever(uniform);
 		}
+	}
+
+	#targetFromTexture(texture: TextureLike): GLenum {
+		if (texture instanceof Cubemap) return this.gl.TEXTURE_CUBE_MAP;
+		if (texture instanceof Texture2DArray) return this.gl.TEXTURE_2D_ARRAY;
+		return this.gl.TEXTURE_2D;
 	}
 
 	#claimTextureUnit() {
@@ -507,7 +538,7 @@ export class Material<TUniforms extends UniformList = UniformList> {
 	}
 }
 
-export type ShaderUniform = StructPrimitives | Texture;
+export type ShaderUniform = StructPrimitives | TextureLike;
 
 export enum RenderPrimitiveType {
 	Points,
@@ -630,7 +661,7 @@ export enum CompareFunc {
 	Always,
 }
 
-export class Texture {
+export class Texture2D {
 	isDirty = true;
 	readonly width: number;
 	readonly height: number;
@@ -677,7 +708,7 @@ export class Texture {
 			image.height;
 			
 
-		return new Texture({
+		return new Texture2D({
 			width: width,
 			height: height,
 			format: format ?? TextureFormat.RGBA8,
@@ -687,6 +718,79 @@ export class Texture {
 		});
 	}
 }
+
+export enum CubemapFace {
+	PositiveX,
+	NegativeX,
+	PositiveY,
+	NegativeY,
+	PositiveZ,
+	NegativeZ,
+}
+
+export const CUBEMAP_FACES = [
+	CubemapFace.PositiveX, CubemapFace.NegativeX,
+	CubemapFace.PositiveY, CubemapFace.NegativeY,
+	CubemapFace.PositiveZ, CubemapFace.NegativeZ,
+] as const;
+
+export class Cubemap {
+	isDirty = true;
+	readonly width: number;
+	readonly height: number;
+	readonly format: TextureFormat;
+	readonly mipmaps: boolean;
+	readonly sampler: Sampler;
+	readonly faces: Record<CubemapFace, TexImageSource | ArrayBufferView>;
+
+	constructor(options: {
+		size: number,
+		faces: Record<CubemapFace, TexImageSource | ArrayBufferView>,
+		format?: TextureFormat,
+		mipmaps?: boolean,
+		sampler?: Sampler,
+	}) {
+		this.width = options.size;
+		this.height = options.size;
+		this.format = options.format ?? TextureFormat.RGBA8;
+		this.mipmaps = options.mipmaps ?? false;
+		this.sampler = options.sampler ?? Sampler.default;
+		this.faces = options.faces;
+	}
+
+	setFace(face: CubemapFace, source: TexImageSource | ArrayBufferView) {
+		this.faces[face] = source;
+		this.isDirty = true;
+	}
+}
+
+export class Texture2DArray {
+	isDirty = true;
+	readonly width: number;
+	readonly height: number;
+	readonly layers: number;
+	readonly format: TextureFormat;
+	readonly mipmaps: boolean;
+	readonly sampler: Sampler;
+
+	constructor(options: {
+		width: number,
+		height: number,
+		layers: number,
+		format?: TextureFormat,
+		mipmaps?: boolean,
+		sampler?: Sampler,
+	}) {
+		this.width = options.width;
+		this.height = options.height;
+		this.layers = options.layers;
+		this.format = options.format ?? TextureFormat.RGBA8;
+		this.mipmaps = options.mipmaps ?? false;
+		this.sampler = options.sampler ?? Sampler.default;
+	}
+}
+
+type TextureLike = Texture2D | Cubemap | Texture2DArray;
 
 export class Sampler {
 	readonly minFilter: TextureFilter;
@@ -718,26 +822,31 @@ export class Sampler {
 	static readonly linearMipmap = new Sampler({ minFilter: TextureFilter.LinearMipmapLinear, magFilter: TextureFilter.Linear });
 }
 
+export type FramebufferAttachment =
+	| { texture: Texture2D }
+	| { texture: Cubemap, face: CubemapFace }
+	| { texture: Texture2DArray, layer: number };
+
 export class Framebuffer {
 	readonly width: number;
 	readonly height: number;
-	readonly colorAttachments: readonly Texture[];
-	readonly depthAttachment: Texture | null;
+	readonly colorAttachments: readonly FramebufferAttachment[];
+	readonly depthAttachment: FramebufferAttachment | null;
 
 	constructor(options: {
 		width: number,
 		height: number,
-		colorAttachments?: Texture[],
-		depthAttachment?: Texture | null,
+		colorAttachments?: FramebufferAttachment[],
+		depthAttachment?: FramebufferAttachment | null,
 	}) {
 		this.width = options.width;
 		this.height = options.height;
 		this.colorAttachments = options.colorAttachments ?? [];
 		this.depthAttachment = options.depthAttachment ?? null;
 		for (const attachment of [...this.colorAttachments, this.depthAttachment]) {
-			if (attachment && (attachment.width !== this.width || attachment.height !== this.height)) {
+			if (attachment && (attachment.texture.width !== this.width || attachment.texture.height !== this.height)) {
 				throw new Error(
-					`Framebuffer attachment size (${attachment.width}x${attachment.height}) does not match framebuffer size (${this.width}x${this.height}).`
+					`Framebuffer attachment size (${attachment.texture.width}x${attachment.texture.height}) does not match framebuffer size (${this.width}x${this.height}).`
 				);
 			}
 		}
@@ -809,6 +918,19 @@ export class Mesh {
 	}
 }
 
+export class InstancedMesh extends Mesh {
+	readonly instanceCount: number;
+
+	constructor(options: {
+		geometry: Geometry,
+		material: Material,
+		instanceCount: number,
+	}) {
+		super(options);
+		this.instanceCount = options.instanceCount;
+	}
+}
+
 export class VertexAttributeLayout {
 	stride = 0;
 	readonly attributes: {
@@ -819,6 +941,13 @@ export class VertexAttributeLayout {
 		normalized: boolean;
 		kind: VertexAttributeKind;
 		offset: number;
+		/**
+		 * Instancing divisor.
+		 * `0` = per-vertex (default).
+		 * `1` = per-instance.
+		 * `N` = advance once every N instances.
+		 */
+		divisor: number;
 	}[] = [];
 
 	append(
@@ -829,11 +958,13 @@ export class VertexAttributeLayout {
 			location?: number,
 			kind?: VertexAttributeKind,
 			normalized?: boolean,
+			divisor?: number,
 		} = {}
 	) {
 		const location = inputAs.location ?? this.attributes.length;
 		const kind = inputAs.kind ?? defaultAttributeInputType(type);
 		const normalized = inputAs.normalized ?? false;
+		const divisor = inputAs.divisor ?? 0;
 
 		if (kind === VertexAttributeKind.Integer && normalized) {
 			throw new Error(`Integer input ${name} cannot be normalized.`);
@@ -843,7 +974,7 @@ export class VertexAttributeLayout {
 			throw new Error(`Attribute location ${location} is already in use.`);
 		}
 
-		this.attributes.push({ name, location, size, type, normalized, kind: kind, offset: this.stride });
+		this.attributes.push({ name, location, size, type, normalized, kind: kind, offset: this.stride, divisor });
 		this.stride += size * this.#getTypeSize(type);
 		return this;
 	}
@@ -993,6 +1124,10 @@ function createGeometryBuffers(
 			gl.vertexAttribIPointer(attribute.location, attribute.size, attributeType, geometry.attributeLayout.stride, attribute.offset);
 		} else {
 			gl.vertexAttribPointer(attribute.location, attribute.size, attributeType, attribute.normalized, geometry.attributeLayout.stride, attribute.offset);
+		}
+
+		if (attribute.divisor > 0) {
+			gl.vertexAttribDivisor(attribute.location, attribute.divisor);
 		}
 	}
 
@@ -1157,10 +1292,26 @@ function glTextureFormat(format: TextureFormat): [GLenum, GLenum, GLenum] {
 	}
 }
 
+function attachTexture(
+	gl: WebGL2RenderingContext,
+	attachmentPoint: GLenum,
+	attachment: FramebufferAttachment,
+	glTexture: WebGLTexture,
+) {
+	if ("face" in attachment) {
+		const faceIndex = CUBEMAP_FACES.indexOf(attachment.face);
+		gl.framebufferTexture2D(gl.FRAMEBUFFER, attachmentPoint, gl.TEXTURE_CUBE_MAP_POSITIVE_X + faceIndex, glTexture, 0);
+	} else if ("layer" in attachment) {
+		gl.framebufferTextureLayer(gl.FRAMEBUFFER, attachmentPoint, glTexture, 0, attachment.layer);
+	} else {
+		gl.framebufferTexture2D(gl.FRAMEBUFFER, attachmentPoint, gl.TEXTURE_2D, glTexture, 0);
+	}
+}
+
 function createFramebuffer(
 	gl: WebGL2RenderingContext,
 	framebuffer: Framebuffer,
-	textureProvider: (texture: Texture) => WebGLTexture,
+	textureProvider: (texture: TextureLike) => WebGLTexture,
 ): WebGLFramebuffer {
 	const glFramebuffer = gl.createFramebuffer();
 	gl.bindFramebuffer(gl.FRAMEBUFFER, glFramebuffer);
@@ -1168,9 +1319,9 @@ function createFramebuffer(
 	const colorAttachments = framebuffer.colorAttachments;
 	const drawBuffers: GLenum[] = [];
 	for (let i = 0; i < colorAttachments.length; i++) {
-		const texture = colorAttachments[i]!;
-		const glTextureObj = textureProvider(texture);
-		gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + i, gl.TEXTURE_2D, glTextureObj, 0);
+		const attachment = colorAttachments[i]!;
+		const glTextureObj = textureProvider(attachment.texture);
+		attachTexture(gl, gl.COLOR_ATTACHMENT0 + i, attachment, glTextureObj);
 		drawBuffers.push(gl.COLOR_ATTACHMENT0 + i);
 	}
 	if (drawBuffers.length > 0) {
@@ -1178,11 +1329,12 @@ function createFramebuffer(
 	}
 
 	if (framebuffer.depthAttachment) {
-		const glTextureObj = textureProvider(framebuffer.depthAttachment);
-		const attachmentPoint = framebuffer.depthAttachment.format === TextureFormat.Depth24Stencil8
+		const attachment = framebuffer.depthAttachment;
+		const glTextureObj = textureProvider(attachment.texture);
+		const attachmentPoint = attachment.texture.format === TextureFormat.Depth24Stencil8
 			? gl.DEPTH_STENCIL_ATTACHMENT
 			: gl.DEPTH_ATTACHMENT;
-		gl.framebufferTexture2D(gl.FRAMEBUFFER, attachmentPoint, gl.TEXTURE_2D, glTextureObj, 0);
+		attachTexture(gl, attachmentPoint, attachment, glTextureObj);
 	}
 
 	const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
