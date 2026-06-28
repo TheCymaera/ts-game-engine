@@ -1,5 +1,6 @@
 import { lerp } from "@open-utilities/maths/lerp";
 import { coerceBetween } from "../maths/coerceBetween";
+import { StructArray, structArrayOf, Uint8 } from "../structs/Struct.js";
 
 export class Color {
 	static fromRGBA(r: number, g: number, b: number, a: number): Color {
@@ -61,6 +62,15 @@ export class Color {
 			coerceBetween(lerp(this.g, other.g, t), 0, 255),
 			coerceBetween(lerp(this.b, other.b, t), 0, 255),
 			coerceBetween(lerp(this.a, other.a, t), 0, 255),
+		);
+	}
+
+	toRGBA8(): StructArray {
+		return structArrayOf(
+			new Uint8(this.r),
+			new Uint8(this.g),
+			new Uint8(this.b),
+			new Uint8(this.a),
 		);
 	}
 }

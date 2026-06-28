@@ -3,8 +3,8 @@ import { Matrix4 } from "../maths/Matrix4.js";
 import { Quaternion } from "../maths/Quaternion.js";
 import { Vector2 } from "../maths/Vector2.js";
 import { Vector3 } from "../maths/Vector3.js";
-import { Float32, Int8, Int16, Int32, Struct, StructArray, type StructField, Uint8, Uint16, Uint32 } from "../structs/Struct.js";
-import { Color } from "./Color.js";
+import { Float32, Int8, Int16, Int32, Struct, StructArray, type StructField, Uint8, Uint16, Uint32 } from "./Struct.js";
+import { Color } from "../rendering/Color.js";
 
 export function createStd140Buffer(field: StructField): ArrayBuffer {
 	const layout = layoutOf(field);

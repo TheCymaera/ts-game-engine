@@ -4,8 +4,8 @@ import { Color } from "./Color.js";
 import type { Rect } from "../maths/Rect.js";
 import { Vector2 } from "@open-utilities/maths/Vector2.js";
 import { Vector3 } from "@open-utilities/maths/Vector3.js";
-export { Int32, Float32, int32, float32 } from "./Struct.js";
-import { Int32, Float32, type StructPrimitives } from "./Struct.js";
+export { Int32, Float32, int32, float32 } from "../structs/Struct.js";
+import { Int32, Float32 } from "../structs/Struct.js";
 import { Quaternion } from "@open-utilities/maths/Quaternion.js";
 
 export class WebGLRenderer {
@@ -538,7 +538,9 @@ export class Material<TUniforms extends UniformList = UniformList> {
 	}
 }
 
-export type ShaderUniform = StructPrimitives | TextureLike;
+export type ShaderUniformPrimitives = Int32 | Float32 | Vector2 | Vector3 | Quaternion | Color | Matrix4;
+
+export type ShaderUniform = ShaderUniformPrimitives | TextureLike;
 
 export enum RenderPrimitiveType {
 	Points,

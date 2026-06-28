@@ -2,25 +2,70 @@ import type { Matrix4 } from "@open-utilities/maths/Matrix4";
 import type { Quaternion } from "@open-utilities/maths/Quaternion";
 import type { Vector2 } from "@open-utilities/maths/Vector2";
 import type { Vector3 } from "@open-utilities/maths/Vector3";
-import type { Color } from "./Color";
+import type { Color } from "../rendering/Color";
+
+export class Int8 {
+	readonly value: number;
+
+	constructor(value: number) {
+		this.value = (value << 24) >> 24;
+	}
+}
+
+export class Uint8 {
+	readonly value: number;
+
+	constructor(value: number) {
+		this.value = value & 0xFF;
+	}
+}
+
+export class Int16 {
+	readonly value: number;
+
+	constructor(value: number) {
+		this.value = (value << 16) >> 16;
+	}
+}
+
+export class Uint16 {
+	readonly value: number;
+
+	constructor(value: number) {
+		this.value = value & 0xFFFF;
+	}
+}
 
 export class Int32 {
-	value: number;
+	readonly value: number;
 
 	constructor(value: number) {
 		this.value = value | 0;
 	}
 }
 
+export class Uint32 {
+	readonly value: number;
+
+	constructor(value: number) {
+		this.value = value >>> 0;
+	}
+}
+
 export class Float32 {
-	value: number;
+	readonly value: number;
 
 	constructor(value: number) {
 		this.value = value;
 	}
 }
 
+export const int8 = (value: number) => new Int8(value);
+export const uint8 = (value: number) => new Uint8(value);
+export const int16 = (value: number) => new Int16(value);
+export const uint16 = (value: number) => new Uint16(value);
 export const int32 = (value: number) => new Int32(value);
+export const uint32 = (value: number) => new Uint32(value);
 export const float32 = (value: number) => new Float32(value);
 
 export class Struct {
@@ -28,7 +73,12 @@ export class Struct {
 }
 
 export type StructPrimitives =
+	| Int8
+	| Uint8
+	| Int16
+	| Uint16
 	| Int32
+	| Uint32
 	| Float32
 	| Vector2
 	| Vector3
@@ -65,5 +115,5 @@ export function structArrayOf(...elements: StructField[]): StructArray {
 			);
 		}
 	}
-	return elements as StructArray;
+	return new StructArray(...elements);
 }

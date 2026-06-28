@@ -1,8 +1,11 @@
 import { AnimationFrameScheduler } from "@open-utilities/rendering/AnimationFrameScheduler";
 import { Color } from "@open-utilities/rendering/Color";
-import { BufferBuilder, Geometry, BufferUsage, Material, Mesh, PipelineState, RenderPrimitiveType, Sampler, ShaderBuffer, ShaderModule, Texture2D, VertexAttributeLayout, VertexAttributeType, WebGLRenderer, float32 } from "@open-utilities/rendering/WebGLRenderer";
+import { Geometry, BufferUsage, Material, Mesh, PipelineState, RenderPrimitiveType, Sampler, ShaderBuffer, ShaderModule, Texture2D, VertexAttributeLayout, VertexAttributeType, WebGLRenderer, float32 } from "@open-utilities/rendering/WebGLRenderer";
 import { Matrix4 } from "@open-utilities/maths/Matrix4";
+import { Vector2 } from "@open-utilities/maths/Vector2";
 import { Vector3 } from "@open-utilities/maths/Vector3";
+import { createPackedBuffer } from "@open-utilities/structs/packedBuffer";
+import { struct, structArrayOf } from "@open-utilities/structs/Struct";
 import birdImageUrl from "./bird-yellow-and-black.jpg";
 
 const canvas = document.querySelector("canvas")!;
@@ -59,13 +62,12 @@ const quadLayout = new VertexAttributeLayout()
 	.append("aTexCoord", 2, VertexAttributeType.Float32);
 
 function createQuadMesh(texture: Texture2D, tint: number): Mesh {
-	const vertices = new BufferBuilder()
-		// position (x, y, z)   texcoord (u, v)
-		.appendFloat32(-0.5, -0.5, 0,  0, 0)
-		.appendFloat32( 0.5, -0.5, 0,  1, 0)
-		.appendFloat32( 0.5,  0.5, 0,  1, 1)
-		.appendFloat32(-0.5,  0.5, 0,  0, 1)
-		.build();
+	const vertices = createPackedBuffer(structArrayOf(
+		struct({ position: Vector3.new(-0.5, -0.5, 0), texCoord: Vector2.new(0, 0) }),
+		struct({ position: Vector3.new( 0.5, -0.5, 0), texCoord: Vector2.new(1, 0) }),
+		struct({ position: Vector3.new( 0.5,  0.5, 0), texCoord: Vector2.new(1, 1) }),
+		struct({ position: Vector3.new(-0.5,  0.5, 0), texCoord: Vector2.new(0, 1) }),
+	));
 
 	const indices = new Uint16Array([0, 1, 2, 0, 2, 3]);
 

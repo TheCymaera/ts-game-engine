@@ -1,21 +1,10 @@
 import { Matrix4 } from "@open-utilities/maths/Matrix4";
 import { Rect } from "@open-utilities/maths/Rect";
 import { Vector2 } from "@open-utilities/maths/Vector2";
-import {
-	BufferBuilder,
-	BufferUsage,
-	Geometry,
-	Material,
-	Mesh,
-	RenderPrimitiveType,
-	ShaderBuffer,
-	ShaderModule,
-	VertexAttributeLayout,
-	VertexAttributeType,
-	WebGLRenderer,
-} from "@open-utilities/rendering/WebGLRenderer";
-import { createStd140Buffer } from "@open-utilities/rendering/std140";
-import { Float32, struct } from "@open-utilities/rendering/Struct";
+import { BufferUsage, Geometry, Material, Mesh, RenderPrimitiveType, ShaderBuffer, ShaderModule, VertexAttributeLayout, VertexAttributeType, WebGLRenderer } from "@open-utilities/rendering/WebGLRenderer";
+import { createStd140Buffer } from "@open-utilities/structs/std140";
+import { createPackedBuffer } from "@open-utilities/structs/packedBuffer";
+import { float32, Float32, struct, structArrayOf } from "@open-utilities/structs/Struct";
 import { Random } from "@open-utilities/maths/Random";
 
 const canvas = document.querySelector("canvas")!;
@@ -31,11 +20,11 @@ const geometry = new Geometry({
 		VertexAttributeType.Float32,
 	),
 	vertices: new ShaderBuffer(
-		new BufferBuilder()
-			.appendFloat32(0.0, 0.6)
-			.appendFloat32(-0.6, -0.4)
-			.appendFloat32(0.6, -0.4)
-			.build(),
+		createPackedBuffer(structArrayOf(
+			struct({ position: Vector2.new(0.0, 0.6) }),
+			struct({ position: Vector2.new(-0.6, -0.4) }),
+			struct({ position: Vector2.new(0.6, -0.4) }),
+		)),
 		BufferUsage.Static,
 	),
 	indices: new ShaderBuffer(
@@ -115,10 +104,10 @@ void (async ()=>{
 			uModel: Matrix4.identity(),
 		});
 
-		colorUniforms.color.r.value = Random.default.nextFloat();
-		colorUniforms.color.g.value = Random.default.nextFloat();
-		colorUniforms.color.b.value = Random.default.nextFloat();
-		colorUniforms.uAlpha.value = Random.default.nextFloat(.7, 1.0);
+		colorUniforms.color.r = float32(Random.default.nextFloat());
+		colorUniforms.color.g = float32(Random.default.nextFloat());
+		colorUniforms.color.b = float32(Random.default.nextFloat());
+		colorUniforms.uAlpha = float32(Random.default.nextFloat(.7, 1.0));
 		colorBuffer.set(createStd140Buffer(colorUniforms));
 
 		renderer.clear();

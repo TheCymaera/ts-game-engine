@@ -2,7 +2,9 @@ import { dedent } from "@open-utilities/strings/dedent.js";
 import { Vector3 } from "../maths/Vector3.js";
 import { Color } from "./Color.js";
 import { buildCuboidBetween, GeometryData } from "./geometryBuilders.js";
-import { BufferBuilder, Geometry, BufferUsage, Material, Mesh, RenderPrimitiveType, ShaderModule, VertexAttributeKind, VertexAttributeLayout, VertexAttributeType, ShaderBuffer } from "./WebGLRenderer.js";
+import { Geometry, BufferUsage, Material, Mesh, RenderPrimitiveType, ShaderModule, VertexAttributeKind, VertexAttributeLayout, VertexAttributeType, ShaderBuffer } from "./WebGLRenderer.js";
+import { createPackedBuffer } from "../structs/packedBuffer.js";
+import { struct, structArrayOf, type Struct } from "../structs/Struct.js";
 
 const unshadedShader = new ShaderModule({
 	vertexShader: dedent/*glsl*/`#version 300 es
@@ -114,16 +116,18 @@ export function buildGridMesh(options: {
 }
 
 class ColoredMeshBuilder {
-	readonly vertexBuffer = new BufferBuilder();
-	readonly indices: number[] = [];
-	vertices = 0;
+	private readonly vertexStructs: Struct[] = [];
+	private readonly indices: number[] = [];
+	private vertices = 0;
 
 	append(geometryData: GeometryData, color: Color) {
 		const indexOffset = this.vertices;
+		const rgba = color.toRGBA8();
 		for (const vertex of geometryData.vertices) {			
-			this.vertexBuffer.appendFloat32(vertex.position.x, vertex.position.y, vertex.position.z);
-			this.vertexBuffer.appendUint8(color.r, color.g, color.b, color.a);
-			
+			this.vertexStructs.push(struct({
+				position: vertex.position,
+				color: rgba,
+			}));
 			this.vertices++;
 		}
 
@@ -148,7 +152,7 @@ class ColoredMeshBuilder {
 			material: options?.material ?? defaultUnshadedMaterial,
 			geometry: new Geometry({
 				attributeLayout: coloredLayout,
-				vertices: new ShaderBuffer(this.vertexBuffer.build(), usage),
+				vertices: new ShaderBuffer(createPackedBuffer(structArrayOf(...this.vertexStructs)), usage),
 				indices: new ShaderBuffer(indices, usage),
 				primitiveType: RenderPrimitiveType.Triangles,
 			}),
