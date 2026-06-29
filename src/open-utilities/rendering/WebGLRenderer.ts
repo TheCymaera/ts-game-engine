@@ -285,45 +285,67 @@ export class WebGLRenderer {
 	}
 	
 	#getAndSyncTexture(texture: TextureLike): WebGLTexture {
+		let firstTime = false;
 		const out = this.#cache.textures.getOrInsertComputed(texture, () => {
-			const gl = this.gl;
-			const glTexture = gl.createTexture();
-			texture.isDirty = true;
-			return glTexture;
+			firstTime = true;
+			return this.gl.createTexture();
 		});
-		this.#syncTexture(texture, out);
+		this.#syncTexture(texture, out, firstTime);
 		return out;
 	}
 
-	#syncTexture(texture: TextureLike, glTexture: WebGLTexture) {
-		if (!texture.isDirty) return;
-
+	#syncTexture(texture: TextureLike, glTexture: WebGLTexture, needsAllocation: boolean) {
 		const gl = this.gl;
-		
 		const target = this.#targetFromTexture(texture);
 		gl.bindTexture(target, glTexture);
 		
 		const [internalFormat, format, type] = glTextureFormat(texture.format);
 
+		const hasUploads = texture.pendingUploads.length !== 0;
+
 		if (texture instanceof Cubemap) {
-			for (let i = 0; i < CUBEMAP_FACES.length; i++) {
-				const face = CUBEMAP_FACES[i]!;
-				const faceTarget = gl.TEXTURE_CUBE_MAP_POSITIVE_X + i;
-				gl.texImage2D(faceTarget, 0, internalFormat, texture.width, texture.height, 0, format, type, texture.faces[face] as ArrayBufferView | null);
+			if (needsAllocation) {
+				for (const face of CUBEMAP_FACES) {
+					const faceTarget = gl.TEXTURE_CUBE_MAP_POSITIVE_X + CUBEMAP_FACES.indexOf(face);
+					gl.texImage2D(faceTarget, 0, internalFormat, texture.width, texture.height, 0, format, type, null);
+				}
 			}
+
+			for (const upload of texture.pendingUploads) {
+				const faceTarget = gl.TEXTURE_CUBE_MAP_POSITIVE_X + CUBEMAP_FACES.indexOf(upload.face);
+				gl.texSubImage2D(faceTarget, 0, upload.xOffset, upload.yOffset, upload.width, upload.height, format, type, upload.source as ArrayBufferView);
+			}
+
+			texture.pendingUploads.length = 0;
 		} else if (texture instanceof Texture2DArray) {
-			gl.texImage3D(target, 0, internalFormat, texture.width, texture.height, texture.layers, 0, format, type, null);
+			if (needsAllocation) {
+				gl.texImage3D(target, 0, internalFormat, texture.width, texture.height, texture.layers, 0, format, type, null);
+			}
+
+			for (const upload of texture.pendingUploads) {
+				gl.texSubImage3D(target, 0, upload.xOffset, upload.yOffset, upload.layer, upload.width, upload.height, 1, format, type, upload.source);
+			}
+
+			texture.pendingUploads.length = 0;
 		} else {
-			const source = texture.source;
-			gl.texImage2D(target, 0, internalFormat, texture.width, texture.height, 0, format, type, source as ArrayBufferView | null);
+			if (needsAllocation) {
+				const upload = texture.pendingUploads.shift();
+				gl.texImage2D(target, 0, internalFormat, texture.width, texture.height, 0, format, type, (upload?.source ?? null) as ArrayBufferView | null);
+			}
+
+			for (const upload of texture.pendingUploads) {
+				gl.texSubImage2D(target, 0, upload.xOffset, upload.yOffset, upload.width, upload.height, format, type, upload.source as ArrayBufferView);
+			}
+
+			texture.pendingUploads.length = 0;
 		}
-		
-		gl.texParameteri(target, gl.TEXTURE_MIN_FILTER, texture.mipmaps ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR);
-		if (texture.mipmaps) gl.generateMipmap(target);
+
+		if (hasUploads) {
+			if (texture.mipmaps) gl.generateMipmap(target);
+			gl.texParameteri(target, gl.TEXTURE_MIN_FILTER, texture.mipmaps ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR);
+		}
 
 		gl.bindTexture(target, null);
-		
-		texture.isDirty = false;
 	}
 
 	#getSampler(sampler: Sampler): WebGLSampler {
@@ -663,14 +685,21 @@ export enum CompareFunc {
 	Always,
 }
 
+export interface PendingTextureUpload {
+	readonly source: TexImageSource | ArrayBufferView;
+	readonly xOffset: number;
+	readonly yOffset: number;
+	readonly width: number;
+	readonly height: number;
+}
+
 export class Texture2D {
-	isDirty = true;
+	readonly pendingUploads: PendingTextureUpload[] = [];
 	readonly width: number;
 	readonly height: number;
 	readonly format: TextureFormat;
 	readonly mipmaps: boolean;
 	readonly sampler: Sampler;
-	readonly source: TexImageSource | ArrayBufferView | null;
 
 	constructor(options: {
 		width: number,
@@ -684,14 +713,12 @@ export class Texture2D {
 		this.height = options.height;
 		this.format = options.format ?? TextureFormat.RGBA8;
 		this.mipmaps = options.mipmaps ?? false;
-		this.source = options.source ?? null;
 		this.sampler = options.sampler ?? Sampler.default;
+		if (options.source) this.setData(options.source);
 	}
 
 	setData(source: TexImageSource | ArrayBufferView) {
-		// @ts-expect-error Privately mutable
-		this.source = source;
-		this.isDirty = true;
+		this.pendingUploads.push({ source, xOffset: 0, yOffset: 0, width: this.width, height: this.height });
 	}
 
 	static fromImage({ image, format, mipmaps, sampler }: {
@@ -736,18 +763,21 @@ export const CUBEMAP_FACES = [
 	CubemapFace.PositiveZ, CubemapFace.NegativeZ,
 ] as const;
 
+export interface CubemapUpload extends PendingTextureUpload {
+	readonly face: CubemapFace;
+}
+
 export class Cubemap {
-	isDirty = true;
+	readonly pendingUploads: CubemapUpload[] = [];
 	readonly width: number;
 	readonly height: number;
 	readonly format: TextureFormat;
 	readonly mipmaps: boolean;
 	readonly sampler: Sampler;
-	readonly faces: Record<CubemapFace, TexImageSource | ArrayBufferView>;
 
 	constructor(options: {
 		size: number,
-		faces: Record<CubemapFace, TexImageSource | ArrayBufferView>,
+		faces?: Partial<Record<CubemapFace, TexImageSource | ArrayBufferView>>,
 		format?: TextureFormat,
 		mipmaps?: boolean,
 		sampler?: Sampler,
@@ -757,17 +787,30 @@ export class Cubemap {
 		this.format = options.format ?? TextureFormat.RGBA8;
 		this.mipmaps = options.mipmaps ?? false;
 		this.sampler = options.sampler ?? Sampler.default;
-		this.faces = options.faces;
+		if (options.faces) {
+			for (const face of CUBEMAP_FACES) {
+				const source = options.faces[face];
+				if (source) this.setFace(face, source);
+			}
+		}
 	}
 
 	setFace(face: CubemapFace, source: TexImageSource | ArrayBufferView) {
-		this.faces[face] = source;
-		this.isDirty = true;
+		this.pendingUploads.push({ face, source, xOffset: 0, yOffset: 0, width: this.width, height: this.height });
 	}
 }
 
+export interface Texture2DArrayUpload {
+	readonly source: ArrayBufferView;
+	readonly layer: number;
+	readonly xOffset: number;
+	readonly yOffset: number;
+	readonly width: number;
+	readonly height: number;
+};
+
 export class Texture2DArray {
-	isDirty = true;
+	readonly pendingUploads: Texture2DArrayUpload[] = [];
 	readonly width: number;
 	readonly height: number;
 	readonly layers: number;
@@ -789,6 +832,10 @@ export class Texture2DArray {
 		this.format = options.format ?? TextureFormat.RGBA8;
 		this.mipmaps = options.mipmaps ?? false;
 		this.sampler = options.sampler ?? Sampler.default;
+	}
+
+	setData(layer: number, source: ArrayBufferView) {
+		this.pendingUploads.push({ source, layer, xOffset: 0, yOffset: 0, width: this.width, height: this.height });
 	}
 }
 
@@ -997,52 +1044,6 @@ export class VertexAttributeLayout {
 				assertNever(type);
 		}
 	}
-}
-
-export class BufferBuilder {
-	appendInt8(...values: number[]) {
-		return this.appendBuffer(new Int8Array(values));
-	}
-
-	appendUint8(...values: number[]) {
-		return this.appendBuffer(new Uint8Array(values));
-	}
-
-	appendInt16(...values: number[]) {
-		return this.appendBuffer(new Int16Array(values));
-	}
-
-	appendUint16(...values: number[]) {
-		return this.appendBuffer(new Uint16Array(values));
-	}
-
-	appendInt32(...values: number[]) {
-		return this.appendBuffer(new Int32Array(values));
-	}
-
-	appendUint32(...values: number[]) {
-		return this.appendBuffer(new Uint32Array(values));
-	}
-
-	appendFloat32(...values: number[]) {
-		return this.appendBuffer(new Float32Array(values));
-	}
-
-	appendBuffer(buffer: ArrayBufferView) {
-		const uint8View = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
-		this.data.push(...uint8View);
-		return this;
-	}
-
-	build(): Uint8Array {
-		return new Uint8Array(this.data);
-	}
-
-	get length() {
-		return this.data.length;
-	}
-
-	private data: number[] = [];
 }
 
 type IndexBufferData = Uint16Array | Uint32Array;
