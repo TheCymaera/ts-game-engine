@@ -2,6 +2,7 @@ import { AnimationFrameScheduler } from "@open-utilities/rendering/AnimationFram
 import { Color } from "@open-utilities/rendering/Color";
 import { Geometry, BufferUsage, Material, Mesh, PipelineState, RenderPrimitiveType, Sampler, ShaderBuffer, ShaderModule, Texture2D, VertexAttributeLayout, VertexAttributeType, WebGLRenderer, float32 } from "@open-utilities/rendering/WebGLRenderer";
 import { Matrix4 } from "@open-utilities/maths/Matrix4";
+import { Rect } from "@open-utilities/maths/Rect";
 import { Vector2 } from "@open-utilities/maths/Vector2";
 import { Vector3 } from "@open-utilities/maths/Vector3";
 import { createPackedBuffer } from "@open-utilities/structs/packedBuffer";
@@ -110,7 +111,7 @@ function updateCanvasDimensions() {
 	if (canvas.width === width && canvas.height === height) return;
 	canvas.width = width;
 	canvas.height = height;
-	renderer.gl.viewport(0, 0, width, height);
+	renderer.setViewport(Rect.fromDimensions(0, 0, width, height));
 }
 
 window.addEventListener("wheel", (e) => {

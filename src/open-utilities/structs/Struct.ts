@@ -68,8 +68,11 @@ export const int32 = (value: number) => new Int32(value);
 export const uint32 = (value: number) => new Uint32(value);
 export const float32 = (value: number) => new Float32(value);
 
-export class Struct {
+export class Struct<T extends Record<string, StructField> = Record<string, StructField>> {
 	[key: string]: StructField;
+	
+	// oxlint-disable-next-line no-unused-private-class-members
+	#structMarker!: T;
 }
 
 export type StructPrimitives =
@@ -93,12 +96,12 @@ export type StructField =
 
 export class StructArray extends Array<StructField> {}
 
-export function struct<T extends Record<string, StructField>>(record: T): Struct & T {
-	const s = new Struct();
+export function struct<T extends Record<string, StructField>>(record: T): Struct<T> & T {
+	const s = new Struct<T>();
 	for (const [key, value] of Object.entries(record)) {
 		s[key] = value;
 	}
-	return s as Struct & T;
+	return s as Struct<T> & T;
 }
 
 export function structArrayOf(...elements: StructField[]): StructArray {

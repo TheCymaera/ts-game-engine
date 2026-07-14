@@ -15,7 +15,15 @@ export class WebGLRenderer {
 	}
 
 	constructor(readonly gl: WebGL2RenderingContext) {
+		this.#currentViewport = {
+			x: 0,
+			y: 0,
+			width: gl.drawingBufferWidth,
+			height: gl.drawingBufferHeight,
+		};
+		this.#currentScissor = { ...this.#currentViewport };
 		this.#applyPipelineState(PipelineState.default);
+		this.#lastPipelineState = PipelineState.default;
 		this.#textureFilterAnisotropic = gl.getExtension("EXT_texture_filter_anisotropic") ?? undefined;
 
 		this.derivedUniforms.draw.uModelViewProjection = {
@@ -31,7 +39,7 @@ export class WebGLRenderer {
 	}
 
 	static fromCanvas(canvas: HTMLCanvasElement): WebGLRenderer {
-		const gl = canvas.getContext("webgl2");
+		const gl = canvas.getContext("webgl2", { stencil: true });
 		if (!gl) throw new Error("WebGL2 not supported.");
 		return new WebGLRenderer(gl);
 	}
@@ -49,14 +57,61 @@ export class WebGLRenderer {
 	}
 
 	clear({ color = true, depth = true, stencil = false } = {}) {
+		const gl = this.gl;
+
 		let bits = 0;
-		if (color) bits |= this.gl.COLOR_BUFFER_BIT;
-		if (depth) bits |= this.gl.DEPTH_BUFFER_BIT;
-		if (stencil) bits |= this.gl.STENCIL_BUFFER_BIT;
-		this.gl.clear(bits);
+		if (color) bits |= gl.COLOR_BUFFER_BIT;
+		if (depth) bits |= gl.DEPTH_BUFFER_BIT;
+		if (stencil) bits |= gl.STENCIL_BUFFER_BIT;
+		if (bits === 0) return; // nothing to clear
+
+		// temporarily force scissor to viewport region so clear is contained
+		if (!this.#scissorTestEnabled) {
+			gl.enable(gl.SCISSOR_TEST);
+			gl.scissor(
+				this.#currentViewport.x,
+				this.#currentViewport.y,
+				this.#currentViewport.width,
+				this.#currentViewport.height,
+			);
+		}
+
+		// force all write masks ON so gl.clear actually works
+		if (color) gl.colorMask(true, true, true, true);
+		if (depth) gl.depthMask(true);
+		if (stencil) gl.stencilMask(0xff);
+
+		// clear
+		gl.clear(bits);
+
+		// restore pipeline write masks
+		const state = this.#lastPipelineState!;
+		gl.colorMask(
+			(state.colorWriteMask & ColorWriteMasks.Red) !== 0,
+			(state.colorWriteMask & ColorWriteMasks.Green) !== 0,
+			(state.colorWriteMask & ColorWriteMasks.Blue) !== 0,
+			(state.colorWriteMask & ColorWriteMasks.Alpha) !== 0,
+		);
+		gl.depthMask(state.depthWrite);
+		gl.stencilMask(state.stencilWriteMask);
+
+		// restore scissor
+		if (!this.#scissorTestEnabled) {
+			gl.disable(gl.SCISSOR_TEST);
+			gl.scissor(
+				this.#currentScissor.x,
+				this.#currentScissor.y,
+				this.#currentScissor.width,
+				this.#currentScissor.height,
+			);
+		}
+
 	}
 
 	#currentTarget: Framebuffer | undefined = undefined;
+	#currentViewport: { x: number, y: number, width: number, height: number };
+	#currentScissor: { x: number, y: number, width: number, height: number };
+	#scissorTestEnabled: boolean = false;
 
 	setFramebuffer(target: Framebuffer | undefined) {
 		if (this.#currentTarget === target) return;
@@ -64,16 +119,44 @@ export class WebGLRenderer {
 		this.#currentTarget = target;
 		this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, target ? this.#getFramebuffer(target) : null);
 		
-		// invalidate depth-attachment
-		this.#lastPipelineState = null;
-		
 		if (target) {
 			this.gl.viewport(0, 0, target.width, target.height);
+			this.#currentViewport = { x: 0, y: 0, width: target.width, height: target.height };
+			this.#currentScissor = { ...this.#currentViewport };
+		} else {
+			this.#currentViewport = {
+				x: 0,
+				y: 0,
+				width: this.gl.drawingBufferWidth,
+				height: this.gl.drawingBufferHeight,
+			};
 		}
 	}
 
 	setViewport(viewport: Rect) {
 		this.gl.viewport(viewport.minX, viewport.minY, viewport.width, viewport.height);
+		this.#currentViewport = {
+			x: viewport.minX,
+			y: viewport.minY,
+			width: viewport.width,
+			height: viewport.height,
+		};
+	}
+
+	setScissor(scissor: Rect) {
+		this.gl.scissor(scissor.minX, scissor.minY, scissor.width, scissor.height);
+		this.#currentScissor = {
+			x: scissor.minX,
+			y: scissor.minY,
+			width: scissor.width,
+			height: scissor.height,
+		};
+	}
+
+	setScissorTest(enabled: boolean) {
+		if (enabled) this.gl.enable(this.gl.SCISSOR_TEST);
+		else this.gl.disable(this.gl.SCISSOR_TEST);
+		this.#scissorTestEnabled = enabled;
 	}
 
 	#passUniforms: UniformList = {};
@@ -190,6 +273,35 @@ export class WebGLRenderer {
 				(state.colorWriteMask & ColorWriteMasks.Blue) !== 0,
 				(state.colorWriteMask & ColorWriteMasks.Alpha) !== 0,
 			);
+		}
+		if (last?.stencilTest !== state.stencilTest) {
+			if (state.stencilTest) gl.enable(gl.STENCIL_TEST);
+			else gl.disable(gl.STENCIL_TEST);
+		}
+		if (state.stencilTest) {
+			if (
+				!last ||
+				last.stencilFunc !== state.stencilFunc ||
+				last.stencilRef !== state.stencilRef ||
+				last.stencilReadMask !== state.stencilReadMask
+			) {
+				gl.stencilFunc(glCompareFunc(state.stencilFunc), state.stencilRef, state.stencilReadMask);
+			}
+			if (
+				!last ||
+				last.stencilFailOp !== state.stencilFailOp ||
+				last.stencilDepthFailOp !== state.stencilDepthFailOp ||
+				last.stencilDepthPassOp !== state.stencilDepthPassOp
+			) {
+				gl.stencilOp(
+					glStencilOp(state.stencilFailOp),
+					glStencilOp(state.stencilDepthFailOp),
+					glStencilOp(state.stencilDepthPassOp),
+				);
+			}
+			if (last?.stencilWriteMask !== state.stencilWriteMask) {
+				gl.stencilMask(state.stencilWriteMask);
+			}
 		}
 	}
 
@@ -340,9 +452,10 @@ export class WebGLRenderer {
 			texture.pendingUploads.length = 0;
 		}
 
-		if (hasUploads) {
-			if (texture.mipmaps) gl.generateMipmap(target);
+		if (hasUploads || needsAllocation) {
+			if (texture.mipmaps && hasUploads) gl.generateMipmap(target);
 			gl.texParameteri(target, gl.TEXTURE_MIN_FILTER, texture.mipmaps ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR);
+			gl.texParameteri(target, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 		}
 
 		gl.bindTexture(target, null);
@@ -599,6 +712,17 @@ export enum FrontFace {
 	CounterClockwise,
 }
 
+export enum StencilOp {
+	Keep,
+	Zero,
+	Replace,
+	Increment,
+	IncrementWrap,
+	Decrement,
+	DecrementWrap,
+	Invert,
+}
+
 export enum ColorWriteMasks {
 	Red = 1,
 	Green = 2,
@@ -619,6 +743,14 @@ export class PipelineState {
 	readonly cullFace: CullFace;
 	readonly frontFace: FrontFace;
 	readonly colorWriteMask: ColorWriteMask;
+	readonly stencilTest: boolean;
+	readonly stencilWriteMask: number;
+	readonly stencilFunc: CompareFunc;
+	readonly stencilRef: number;
+	readonly stencilReadMask: number;
+	readonly stencilFailOp: StencilOp;
+	readonly stencilDepthFailOp: StencilOp;
+	readonly stencilDepthPassOp: StencilOp;
 
 	constructor(options: {
 		depthTest?: boolean,
@@ -628,6 +760,14 @@ export class PipelineState {
 		cullFace?: CullFace,
 		frontFace?: FrontFace,
 		colorWriteMask?: ColorWriteMask,
+		stencilTest?: boolean,
+		stencilWriteMask?: number,
+		stencilFunc?: CompareFunc,
+		stencilRef?: number,
+		stencilReadMask?: number,
+		stencilFailOp?: StencilOp,
+		stencilDepthFailOp?: StencilOp,
+		stencilDepthPassOp?: StencilOp,
 	} = {}) {
 		this.depthTest = options.depthTest ?? true;
 		this.depthWrite = options.depthWrite ?? true;
@@ -636,6 +776,14 @@ export class PipelineState {
 		this.cullFace = options.cullFace ?? CullFace.None;
 		this.frontFace = options.frontFace ?? FrontFace.CounterClockwise;
 		this.colorWriteMask = options.colorWriteMask ?? ColorWriteMasks.All;
+		this.stencilTest = options.stencilTest ?? false;
+		this.stencilWriteMask = options.stencilWriteMask ?? 0xFF;
+		this.stencilFunc = options.stencilFunc ?? CompareFunc.Always;
+		this.stencilRef = options.stencilRef ?? 0;
+		this.stencilReadMask = options.stencilReadMask ?? 0xFF;
+		this.stencilFailOp = options.stencilFailOp ?? StencilOp.Keep;
+		this.stencilDepthFailOp = options.stencilDepthFailOp ?? StencilOp.Keep;
+		this.stencilDepthPassOp = options.stencilDepthPassOp ?? StencilOp.Keep;
 	}
 
 	static readonly default = new PipelineState();
@@ -1238,6 +1386,20 @@ function glFrontFace(face: FrontFace) {
 		case FrontFace.Clockwise: return WebGL2RenderingContext.CW;
 		case FrontFace.CounterClockwise: return WebGL2RenderingContext.CCW;
 		default: assertNever(face);
+	}
+}
+
+function glStencilOp(op: StencilOp) {
+	switch (op) {
+		case StencilOp.Keep: return WebGL2RenderingContext.KEEP;
+		case StencilOp.Zero: return WebGL2RenderingContext.ZERO;
+		case StencilOp.Replace: return WebGL2RenderingContext.REPLACE;
+		case StencilOp.Increment: return WebGL2RenderingContext.INCR;
+		case StencilOp.IncrementWrap: return WebGL2RenderingContext.INCR_WRAP;
+		case StencilOp.Decrement: return WebGL2RenderingContext.DECR;
+		case StencilOp.DecrementWrap: return WebGL2RenderingContext.DECR_WRAP;
+		case StencilOp.Invert: return WebGL2RenderingContext.INVERT;
+		default: assertNever(op);
 	}
 }
 

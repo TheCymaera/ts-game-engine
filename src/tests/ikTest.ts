@@ -6,6 +6,7 @@ import { createIKEvaluator3D } from "@open-utilities/inverse-kinematics/ikEvalua
 import { Matrix4 } from "@open-utilities/maths/Matrix4";
 import { Quaternion } from "@open-utilities/maths/Quaternion";
 import { Random } from "@open-utilities/maths/Random";
+import { Rect } from "@open-utilities/maths/Rect";
 import { Vector3 } from "@open-utilities/maths/Vector3";
 import { AnimationFrameScheduler } from "@open-utilities/rendering/AnimationFrameScheduler";
 import { Color } from "@open-utilities/rendering/Color";
@@ -373,7 +374,7 @@ function updateCanvasDimensions() {
 
 	canvas.width = width;
 	canvas.height = height;
-	renderer.gl.viewport(0, 0, width, height);
+	renderer.setViewport(Rect.fromDimensions(0, 0, width, height));
 	passUniforms.uProjection = Matrix4.perspective({
 		fovy: Math.PI / 3,
 		aspectRatio: width / height,
