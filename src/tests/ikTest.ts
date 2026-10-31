@@ -316,7 +316,7 @@ AnimationFrameScheduler.periodic(({ elapsedTime }) => {
 	}
 
 	const targetLerp = 1.5;
-	const chainLerp = Infinity;
+	const chainLerp = 1e6;
 	//const maxChainRotateDelta = 2;
 
 	currentTarget.lerp(desiredTarget, 1 - Math.exp(-elapsedTime.seconds * targetLerp));
