@@ -4,8 +4,9 @@ import { Quaternion } from "../maths/Quaternion.js";
 import { sumArray } from "../maths/sumArray.js";
 import { Vector3 } from "../maths/Vector3.js";
 import { coerceBetween } from "@open-utilities/maths/coerceBetween.js";
-import { wrapRadians } from "@open-utilities/maths/wrapRadians.js";
 import { assertNever } from "@open-utilities/types/assertNever.js";
+
+const SWING_EPSILON = 1e-9;
 
 export class IKSwingTwistJoint3D {
 	private constructor(
@@ -29,10 +30,9 @@ export class IKSwingTwistJoint3D {
 	}
 
 	rotation(state: IKSwingTwistJointState3D): Quaternion {
-		const direction = directionFromSpherical(state.azimuth, state.swing);
-		const swingRotation = Quaternion.fromTo(IKChain3D.IDENTITY_VECTOR, direction, this.referenceAxis);
+		const swing = swingRotation(state.swingX, state.swingY, this.maxSwing);
 		const twistRotation = Quaternion.fromAxisAngle(IKChain3D.IDENTITY_VECTOR, state.twist);
-		return swingRotation.multiply(twistRotation)!;
+		return swing.multiply(twistRotation).normalize() ?? Quaternion.identity();
 	}
 }
 
@@ -64,51 +64,28 @@ export class IKHingeJoint3D {
 
 export class IKSwingTwistJointState3D {
 	constructor(
-		public azimuth: number = 0,
-		public swing: number = 0,
+		public swingX: number = 0,
+		public swingY: number = 0,
 		public twist: number = 0,
 	) {}
 
 	clone() {
-		return new IKSwingTwistJointState3D(this.azimuth, this.swing, this.twist);
+		return new IKSwingTwistJointState3D(this.swingX, this.swingY, this.twist);
 	}
 
 	copy(other: IKSwingTwistJointState3D) {
-		this.azimuth = other.azimuth;
-		this.swing = other.swing;
+		this.swingX = other.swingX;
+		this.swingY = other.swingY;
 		this.twist = other.twist;
 		return this;
 	}
 
 	lerpState(other: IKSwingTwistJointState3D, t: number) {
-		this.azimuth = wrapRadians(this.azimuth + shortestAngleDelta(this.azimuth, other.azimuth) * t);
-		this.swing += (other.swing - this.swing) * t;
+		this.swingX += (other.swingX - this.swingX) * t;
+		this.swingY += (other.swingY - this.swingY) * t;
 		this.twist += (other.twist - this.twist) * t;
 		return this;
 	}
-
-	//rotateTowards(target: IKSwingTwistJointState3D, maxDelta: number) {
-	//	const identityVector = IKChain3D.IDENTITY_VECTOR;
-	//	const referenceAxis = IKChain3D.IDENTITY_VECTOR.orthogonal();
-
-	//	const currentSwingQuat = Quaternion.fromTo(identityVector, directionFromSpherical(this.azimuth, this.swing), referenceAxis);
-	//	const targetSwingQuat = Quaternion.fromTo(identityVector, directionFromSpherical(target.azimuth, target.swing), referenceAxis);
-
-	//	const swingAngle = currentSwingQuat.angleTo(targetSwingQuat);
-	//	const lerp = Math.min(1, maxDelta / swingAngle);
-	//	const swingQuat = currentSwingQuat.clone().slerp(targetSwingQuat, lerp);
-
-	//	const { swing, azimuth } = decomposeSwing(swingQuat);
-	//	this.swing = swing;
-	//	this.azimuth = azimuth;
-	//	this.twist += coerceBetween(target.twist - this.twist, -maxDelta, maxDelta);
-	//	return this;
-
-	//	//this.azimuth = wrapRadians(this.azimuth + shortestAngleDelta(this.azimuth, target.azimuth) * maxDelta);
-	//	//this.swing += coerceBetween(target.swing - this.swing, -maxDelta, maxDelta);
-	//	//this.twist += coerceBetween(target.twist - this.twist, -maxDelta, maxDelta);
-	//	//return this;
-	//}
 }
 
 export class IKHingeJointState3D {
@@ -252,8 +229,8 @@ export class IKChainPose3D {
 			if (jointState instanceof IKHingeJointState3D && joint instanceof IKHingeJoint3D) {
 				jointState.angle = random.nextFloat(joint.minAngle, joint.maxAngle);
 			} else if (jointState instanceof IKSwingTwistJointState3D && joint instanceof IKSwingTwistJoint3D) {
-				jointState.azimuth = random.nextFloat(-Math.PI, Math.PI);
-				jointState.swing = random.nextFloat(0, joint.maxSwing);
+				jointState.swingX = random.nextFloat(-1, 1);
+				jointState.swingY = random.nextFloat(-1, 1);
 				jointState.twist = random.nextFloat(joint.minTwist, joint.maxTwist);
 			}
 		}
@@ -332,13 +309,20 @@ export class IKChainPose3D {
 	//}
 }
 
-function directionFromSpherical(azimuth: number, swing: number) {
-	const sinSwing = Math.sin(swing);
-	return Vector3.new(
-		Math.cos(azimuth) * sinSwing,
-		Math.cos(swing),
-		Math.sin(azimuth) * sinSwing,
-	).normalize() ?? IKChain3D.IDENTITY_VECTOR;
+export function boxToSwing(x: number, y: number) {
+	return [
+		x * Math.sqrt(Math.max(1 - y * y / 2, 0)),
+		y * Math.sqrt(Math.max(1 - x * x / 2, 0)),
+	] as const;
+}
+
+export function swingRotation(swingX: number, swingY: number, maxSwing: number) {
+	const [x, y] = boxToSwing(swingX, swingY);
+	const angle = Math.hypot(x, y);
+	if (angle <= SWING_EPSILON) return Quaternion.identity();
+
+	const axis = Vector3.new(y / angle, 0, -x / angle);
+	return Quaternion.fromAxisAngle(axis, angle * maxSwing);
 }
 
 function shortestAngleDelta(from: number, to: number) {
@@ -347,14 +331,3 @@ function shortestAngleDelta(from: number, to: number) {
 	while (delta < -Math.PI) delta += Math.PI * 2;
 	return delta;
 }
-
-
-//function decomposeSwing(rotation: Quaternion) {
-//	const direction = IKChain3D.IDENTITY_VECTOR.rotate(rotation);
-
-//	// Calculate swing angle (angle from vertical/identity)
-//	const swing = Math.acos(Math.max(-1, Math.min(1, direction.y)));
-//	const azimuth = Math.atan2(direction.z, direction.x);
-	
-//	return { azimuth, swing }
-//}

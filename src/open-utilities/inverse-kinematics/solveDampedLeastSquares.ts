@@ -24,7 +24,13 @@ export interface LeastSquaresProblem<State, Parameter, Metrics extends DampedLea
 	copyState(target: State, source: State): void;
 	evaluateState(state: State): Metrics;
 	listParameters(state: State): Parameter[];
+
+	/** Applies `delta` to `parameter`, returning the delta actually applied after clamping. */
 	perturbParameter(state: State, parameter: Parameter, delta: number): number;
+
+	/** Returns the delta that perturbParameter would apply, i.e. `delta` clipped to the parameter's range. */
+	clampDelta(state: State, parameter: Parameter, delta: number): number;
+
 	applyStep(state: State, parameters: Parameter[], step: number[], scale: number): void;
 }
 
@@ -49,7 +55,7 @@ export function solveDampedLeastSquares<State, Parameter, Metrics extends Damped
 		}
 
 		const jacobian = computeJacobian(problem, state, currentMetrics, parameters, options.finiteDifference);
-		const step = solveDampedLeastSquaresStep(jacobian, currentMetrics.errorVector, damping);
+		const step = solveDampedLeastSquaresStep(problem, state, parameters, jacobian, currentMetrics.errorVector, damping);
 		if (!step) {
 			damping = Math.min(options.maxDamping, damping * options.dampingScale);
 			continue;
@@ -106,9 +112,6 @@ function computeJacobian<State, Parameter, Metrics extends DampedLeastSquaresMet
 		const forwardDelta = problem.perturbParameter(forwardState, parameter, finiteDifference);
 		const backwardDelta = problem.perturbParameter(backwardState, parameter, -finiteDifference);
 
-		let sampledMetrics: Metrics | undefined;
-		let denominator = 0;
-
 		if (Math.abs(forwardDelta) > EPSILON && Math.abs(backwardDelta) > EPSILON) {
 			const forwardMetrics = problem.evaluateState(forwardState);
 			const backwardMetrics = problem.evaluateState(backwardState);
@@ -119,6 +122,9 @@ function computeJacobian<State, Parameter, Metrics extends DampedLeastSquaresMet
 
 			continue;
 		}
+
+		let sampledMetrics: Metrics | undefined;
+		let denominator = 0;
 
 		if (Math.abs(forwardDelta) > EPSILON) {
 			sampledMetrics = problem.evaluateState(forwardState);
@@ -140,32 +146,105 @@ function computeJacobian<State, Parameter, Metrics extends DampedLeastSquaresMet
 	return jacobian;
 }
 
-function solveDampedLeastSquaresStep(jacobian: number[][], errorVector: number[], damping: number) {
-	const columnCount = jacobian[0]?.length ?? 0;
+function solveDampedLeastSquaresStep<State, Parameter, Metrics extends DampedLeastSquaresMetrics>(
+	problem: LeastSquaresProblem<State, Parameter, Metrics>,
+	state: State,
+	parameters: Parameter[],
+	jacobian: number[][],
+	errorVector: number[],
+	damping: number,
+) {
+	const columnCount = parameters.length;
 	if (columnCount === 0) {
 		return undefined;
 	}
 
-	const normalMatrix = Array.from({ length: columnCount }, () => Array.from({ length: columnCount }, () => 0));
-	const rhs = Array.from({ length: columnCount }, () => 0);
+	const active = Array.from({ length: columnCount }, () => true);
+
+	while (true) {
+		const step = solveRestrictedStep(jacobian, errorVector, damping, active);
+		if (!step) {
+			return undefined;
+		}
+
+		let pinned = false;
+
+		for (let index = 0; index < columnCount; index++) {
+			if (!active[index]) {
+				continue;
+			}
+
+			const delta = step[index]!;
+			if (Math.abs(delta) <= EPSILON) {
+				continue;
+			}
+
+			const applied = problem.clampDelta(state, parameters[index]!, delta);
+			step[index] = applied;
+
+			if (Math.abs(applied) <= EPSILON) {
+				active[index] = false;
+				pinned = true;
+			}
+		}
+
+		if (!pinned) {
+			return step;
+		}
+
+		if (!active.some(value => value)) {
+			return undefined;
+		}
+	}
+}
+
+function solveRestrictedStep(jacobian: number[][], errorVector: number[], damping: number, active: boolean[]) {
+	const columns: number[] = [];
+	for (let index = 0; index < active.length; index++) {
+		if (active[index]) {
+			columns.push(index);
+		}
+	}
+
+	const size = columns.length;
+	if (size === 0) {
+		return undefined;
+	}
+
+	const normalMatrix = Array.from({ length: size }, () => Array.from({ length: size }, () => 0));
+	const rhs = Array.from({ length: size }, () => 0);
 	const dampingSquared = damping * damping;
 
 	for (let row = 0; row < jacobian.length; row++) {
-		for (let column = 0; column < columnCount; column++) {
-			const left = jacobian[row]![column]!;
+		for (let column = 0; column < size; column++) {
+			const left = jacobian[row]![columns[column]!]!;
 			rhs[column]! -= left * errorVector[row]!;
 
-			for (let innerColumn = 0; innerColumn < columnCount; innerColumn++) {
-				normalMatrix[column]![innerColumn]! += left * jacobian[row]![innerColumn]!;
+			for (let innerColumn = 0; innerColumn < size; innerColumn++) {
+				normalMatrix[column]![innerColumn]! += left * jacobian[row]![columns[innerColumn]!]!;
 			}
 		}
 	}
 
-	for (let index = 0; index < columnCount; index++) {
+	for (let index = 0; index < size; index++) {
 		normalMatrix[index]![index]! += dampingSquared;
 	}
 
-	return solveLinearSystem(normalMatrix, rhs);
+	const solution = solveLinearSystem(normalMatrix, rhs);
+	if (!solution) {
+		return undefined;
+	}
+
+	const step = Array.from({ length: active.length }, () => 0);
+	for (let index = 0; index < size; index++) {
+		if (!Number.isFinite(solution[index])) {
+			return undefined;
+		}
+
+		step[columns[index]!] = solution[index]!;
+	}
+
+	return step;
 }
 
 function solveLinearSystem(matrix: number[][], rhs: number[]) {
