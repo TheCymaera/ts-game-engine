@@ -31,13 +31,15 @@ const passUniforms = {
 	uView: Matrix4.identity(),
 };
 
+const TWIST_REFERENCE_AXIS = Vector3.new(0, 0, 1);
+
 const chain = IKChain3D.new({
 	segments: [
-		{ length: 0.80, joint: IKSwingTwistJoint3D.new({ referenceAxis: Vector3.new(0, 0, 1), maxSwing: 0.2 * Math.PI, minTwist: -1 * Math.PI, maxTwist: 1 * Math.PI }) },
+		{ length: 0.80, joint: IKSwingTwistJoint3D.new({ maxSwing: 0.2 * Math.PI, minTwist: -1 * Math.PI, maxTwist: 1 * Math.PI }) },
 		{ length: 1.05, joint: IKHingeJoint3D.new({ axis: Vector3.new(1, 0, 0), reference: Vector3.new(0, 1, 0), minAngle: -0.3 * Math.PI, maxAngle: 0.3 * Math.PI }) },
 		{ length: 0.95, joint: IKHingeJoint3D.new({ axis: Vector3.new(1, 0, 0), reference: Vector3.new(0, 1, 0), minAngle: -0.3 * Math.PI, maxAngle: 0.3 * Math.PI }) },
-		{ length: 0.80, joint: IKSwingTwistJoint3D.new({ referenceAxis: Vector3.new(0, 0, 1), maxSwing: 0.22 * Math.PI, minTwist: -0.4 * Math.PI, maxTwist: 0.4 * Math.PI }) },
-		{ length: 0.65, joint: IKSwingTwistJoint3D.new({ referenceAxis: Vector3.new(0, 0, 1), maxSwing: 0.25 * Math.PI, minTwist: -0.4 * Math.PI, maxTwist: 0.4 * Math.PI }) },
+		{ length: 0.80, joint: IKSwingTwistJoint3D.new({ maxSwing: 0.22 * Math.PI, minTwist: -0.4 * Math.PI, maxTwist: 0.4 * Math.PI }) },
+		{ length: 0.65, joint: IKSwingTwistJoint3D.new({ maxSwing: 0.25 * Math.PI, minTwist: -0.4 * Math.PI, maxTwist: 0.4 * Math.PI }) },
 	],
 });
 
@@ -252,7 +254,7 @@ const swingTwistGuideMeshes = chain.segments.map((segment) => {
 		buildCircleArc({
 			center: Vector3.new(0, segment.length * 0.8, 0),
 			axis: IKChain3D.IDENTITY_VECTOR,
-			forward: segment.joint.referenceAxis,
+			forward: TWIST_REFERENCE_AXIS,
 			radius: 0.1,
 			minAngle: segment.joint.minTwist,
 			maxAngle: segment.joint.maxTwist,
@@ -445,8 +447,6 @@ function drawSwingTwistGuide(
 	parentRotation: Quaternion,
 	jointRotation: Quaternion,
 ) {
-	const constraint = segment.joint as IKSwingTwistJoint3D;
-
 	const axisWorld = jointRotation.rotateVector(Vector3.new(0, 1, 0)).normalize() ?? Vector3.new(0, 1, 0);
 	const swingDirection = parentRotation.clone().invert()?.rotateVector(axisWorld) ?? Vector3.new(0, 1, 0);
 	const swingRotation = Quaternion.fromTo(Vector3.new(0, 1, 0), swingDirection, Vector3.new(1, 0, 0));
@@ -472,7 +472,7 @@ function drawSwingTwistGuide(
 		Matrix4.identity()
 			.translate(ringCenter)
 			.rotate(jointRotation)
-			.rotate(Quaternion.fromTo(IKChain3D.IDENTITY_VECTOR, constraint.referenceAxis))
+			.rotate(Quaternion.fromTo(IKChain3D.IDENTITY_VECTOR, TWIST_REFERENCE_AXIS))
 	);
 }
 

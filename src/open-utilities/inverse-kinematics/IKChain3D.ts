@@ -2,21 +2,31 @@ import { Random } from "@open-utilities/maths/Random.js";
 import { throwError } from "../core/throwError.js";
 import { Quaternion } from "../maths/Quaternion.js";
 import { sumArray } from "../maths/sumArray.js";
+import { Vector2 } from "../maths/Vector2.js";
 import { Vector3 } from "../maths/Vector3.js";
 import { coerceBetween } from "@open-utilities/maths/coerceBetween.js";
-import { assertNever } from "@open-utilities/types/assertNever.js";
 
+const REST_BIAS = 0.035;
 const SWING_EPSILON = 1e-9;
+
+export interface IKSwingTwistJoint3DOptions {
+	maxSwing: number;
+	minTwist: number;
+	maxTwist: number;
+	restSwing?: Vector2 | null;
+	restTwist?: number | null;
+}
 
 export class IKSwingTwistJoint3D {
 	private constructor(
 		readonly maxSwing: number,
 		readonly minTwist: number,
 		readonly maxTwist: number,
-		readonly referenceAxis: Vector3,
+		readonly restSwing: Vector2 | null,
+		readonly restTwist: number | null,
 	) {}
 
-	static new(options: { maxSwing: number; minTwist: number; maxTwist: number; referenceAxis: Vector3 }) {
+	static new(options: IKSwingTwistJoint3DOptions) {
 		if (options.minTwist > options.maxTwist) {
 			throw new Error("IKChain3D constraint.minTwist cannot be greater than constraint.maxTwist.");
 		}
@@ -25,7 +35,18 @@ export class IKSwingTwistJoint3D {
 			options.maxSwing,
 			options.minTwist,
 			options.maxTwist,
-			options.referenceAxis.clone().normalize() ?? throwError("IKChain3D constraint.referenceAxis must be non-zero."),
+			options.restSwing === undefined ? Vector2.zero() : options.restSwing?.clone() ?? null,
+			options.restTwist === undefined ? (options.minTwist + options.maxTwist) / 2 : options.restTwist,
+		);
+	}
+
+	restState() {
+		const box = this.restSwing && swingAnglesToBox(this.restSwing.x, this.restSwing.y, this.maxSwing);
+
+		return new IKSwingTwistJointState3D(
+			box?.[0] ?? 0,
+			box?.[1] ?? 0,
+			coerceBetween(this.restTwist ?? 0, this.minTwist, this.maxTwist),
 		);
 	}
 
@@ -36,15 +57,24 @@ export class IKSwingTwistJoint3D {
 	}
 }
 
+export interface IKHingeJoint3DOptions {
+	minAngle: number;
+	maxAngle: number;
+	axis: Vector3;
+	reference: Vector3;
+	restAngle?: number | null;
+}
+
 export class IKHingeJoint3D {
 	private constructor(
 		readonly minAngle: number,
 		readonly maxAngle: number,
 		readonly axis: Vector3,
 		readonly reference: Vector3,
+		readonly restAngle: number | null,
 	) { }
 
-	static new(options: { minAngle: number; maxAngle: number; axis: Vector3; reference: Vector3 }) {
+	static new(options: IKHingeJoint3DOptions) {
 		if (options.minAngle > options.maxAngle) {
 			throw new Error("IKChain3D constraint.minAngle cannot be greater than constraint.maxAngle.");
 		}
@@ -54,12 +84,25 @@ export class IKHingeJoint3D {
 			options.maxAngle,
 			options.axis.clone().normalize() ?? throwError("IKChain3D constraint.axis must be non-zero."),
 			options.reference.clone().normalize() ?? throwError("IKChain3D constraint.reference must be non-zero."),
+			options.restAngle === undefined ? (options.minAngle + options.maxAngle) / 2 : options.restAngle,
 		);
+	}
+
+	restState() {
+		const angle = this.restAngle ?? defaultRestBiasAngle(this.minAngle, this.maxAngle);
+		return new IKHingeJointState3D(coerceBetween(angle, this.minAngle, this.maxAngle));
 	}
 
 	rotation(state: IKHingeJointState3D) {
 		return Quaternion.fromAxisAngle(this.axis, state.angle);
 	}
+}
+
+function defaultRestBiasAngle(minAngle: number, maxAngle: number) {
+	if (minAngle >= 0) return minAngle + REST_BIAS;
+	if (maxAngle <= 0) return maxAngle - REST_BIAS;
+	// Straddles zero, so bias positive: any bias will do, but it must not be exactly zero.
+	return REST_BIAS;
 }
 
 export class IKSwingTwistJointState3D {
@@ -155,17 +198,7 @@ export class IKChain3D {
 		return new IKChainPose3D(
 			options.position.clone(),
 			options.rotation.clone(),
-			this.segments.map(segment => {
-				if (segment.joint instanceof IKHingeJoint3D) {
-					return new IKHingeJointState3D();
-				}
-
-				if (segment.joint instanceof IKSwingTwistJoint3D) {
-					return new IKSwingTwistJointState3D();
-				}
-
-				assertNever(segment.joint);
-			}),
+			this.segments.map(segment => segment.joint.restState()),
 		);
 	}
 
@@ -309,14 +342,34 @@ export class IKChainPose3D {
 	//}
 }
 
-export function boxToSwing(x: number, y: number) {
+function boxToSwing(x: number, y: number) {
 	return [
 		x * Math.sqrt(Math.max(1 - y * y / 2, 0)),
 		y * Math.sqrt(Math.max(1 - x * x / 2, 0)),
 	] as const;
 }
 
-export function swingRotation(swingX: number, swingY: number, maxSwing: number) {
+export function boxToSwingAngles(swingX: number, swingY: number, maxSwing: number) {
+	const [x, y] = boxToSwing(swingX, swingY);
+	return [x * maxSwing, y * maxSwing] as const;
+}
+
+function swingAnglesToBox(swingX: number, swingY: number, maxSwing: number) {
+	const magnitude = Math.hypot(swingX, swingY);
+	if (magnitude <= SWING_EPSILON || maxSwing <= SWING_EPSILON) return [0, 0] as const;
+
+	const scale = Math.min(maxSwing, magnitude) / magnitude;
+	return discToBox(swingX * scale / maxSwing, swingY * scale / maxSwing);
+}
+
+function discToBox(x: number, y: number) {
+	const k = 1 - (x * x - y * y) / 2;
+	const boxY = k - Math.sqrt(Math.max(k * k - 2 * y * y, 0));
+	const boxX = boxY + x * x - y * y;
+	return [Math.sign(x) * Math.sqrt(Math.max(boxX, 0)), Math.sign(y) * Math.sqrt(Math.max(boxY, 0))] as const;
+}
+
+function swingRotation(swingX: number, swingY: number, maxSwing: number) {
 	const [x, y] = boxToSwing(swingX, swingY);
 	const angle = Math.hypot(x, y);
 	if (angle <= SWING_EPSILON) return Quaternion.identity();
