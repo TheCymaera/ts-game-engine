@@ -1,4 +1,5 @@
 import { coerceBetween } from "../maths/coerceBetween.js";
+import { MatrixN } from "../maths/MatrixN.js";
 
 const EPSILON = 0.000001;
 
@@ -103,7 +104,7 @@ function computeJacobian<State, Parameter, Metrics extends DampedLeastSquaresMet
 	finiteDifference: number,
 ) {
 	const rows = baseMetrics.errorVector.length;
-	const jacobian = Array.from({ length: rows }, () => Array.from({ length: parameters.length }, () => 0));
+	const jacobian = MatrixN.zero(rows, parameters.length);
 
 	for (let column = 0; column < parameters.length; column++) {
 		const forwardState = problem.cloneState(state);
@@ -117,7 +118,7 @@ function computeJacobian<State, Parameter, Metrics extends DampedLeastSquaresMet
 			const backwardMetrics = problem.evaluateState(backwardState);
 
 			for (let row = 0; row < rows; row++) {
-				jacobian[row]![column] = (forwardMetrics.errorVector[row]! - backwardMetrics.errorVector[row]!) / (forwardDelta - backwardDelta);
+				jacobian.set(row, column, (forwardMetrics.errorVector[row]! - backwardMetrics.errorVector[row]!) / (forwardDelta - backwardDelta));
 			}
 
 			continue;
@@ -139,7 +140,7 @@ function computeJacobian<State, Parameter, Metrics extends DampedLeastSquaresMet
 		}
 
 		for (let row = 0; row < rows; row++) {
-			jacobian[row]![column] = (sampledMetrics.errorVector[row]! - baseMetrics.errorVector[row]!) / denominator;
+			jacobian.set(row, column, (sampledMetrics.errorVector[row]! - baseMetrics.errorVector[row]!) / denominator);
 		}
 	}
 
@@ -150,7 +151,7 @@ function solveDampedLeastSquaresStep<State, Parameter, Metrics extends DampedLea
 	problem: LeastSquaresProblem<State, Parameter, Metrics>,
 	state: State,
 	parameters: Parameter[],
-	jacobian: number[][],
+	jacobian: MatrixN,
 	errorVector: number[],
 	damping: number,
 ) {
@@ -198,99 +199,85 @@ function solveDampedLeastSquaresStep<State, Parameter, Metrics extends DampedLea
 	}
 }
 
-function solveRestrictedStep(jacobian: number[][], errorVector: number[], damping: number, active: boolean[]) {
+function solveRestrictedStep(jacobian: MatrixN, errorVector: number[], damping: number, active: boolean[]) {
 	const columns: number[] = [];
 	for (let index = 0; index < active.length; index++) {
-		if (active[index]) {
-			columns.push(index);
-		}
+		if (active[index]) columns.push(index);
 	}
+	if (columns.length === 0) return undefined;
 
-	const size = columns.length;
-	if (size === 0) {
-		return undefined;
-	}
+	const restricted = jacobian.selectColumns(columns);
+	const normalMatrix = restricted.transposeMultiply(restricted);
+	normalMatrix.addDiagonal(damping * damping);
 
-	const normalMatrix = Array.from({ length: size }, () => Array.from({ length: size }, () => 0));
-	const rhs = Array.from({ length: size }, () => 0);
-	const dampingSquared = damping * damping;
-
-	for (let row = 0; row < jacobian.length; row++) {
-		for (let column = 0; column < size; column++) {
-			const left = jacobian[row]![columns[column]!]!;
-			rhs[column]! -= left * errorVector[row]!;
-
-			for (let innerColumn = 0; innerColumn < size; innerColumn++) {
-				normalMatrix[column]![innerColumn]! += left * jacobian[row]![columns[innerColumn]!]!;
-			}
-		}
-	}
-
-	for (let index = 0; index < size; index++) {
-		normalMatrix[index]![index]! += dampingSquared;
-	}
-
+	const rhs = restricted.transposeMultiplyVector(errorVector).map(value => -value);
 	const solution = solveLinearSystem(normalMatrix, rhs);
-	if (!solution) {
-		return undefined;
-	}
+	if (!solution) return undefined;
 
 	const step = Array.from({ length: active.length }, () => 0);
-	for (let index = 0; index < size; index++) {
-		if (!Number.isFinite(solution[index])) {
-			return undefined;
-		}
-
+	for (let index = 0; index < columns.length; index++) {
+		if (!Number.isFinite(solution[index])) return undefined;
 		step[columns[index]!] = solution[index]!;
 	}
 
 	return step;
 }
 
-function solveLinearSystem(matrix: number[][], rhs: number[]) {
-	const size = rhs.length;
-	const augmented = matrix.map((row, index) => [...row, rhs[index]!]);
+/**
+ * Gauss–Jordan elimination with partial pivoting.
+ * Solves `matrix * x = rhs`
+ */
+function solveLinearSystem(matrix: MatrixN, rhs: readonly number[]) {
+	const size = matrix.rows;
+	const augmented = matrix.clone();
+	const solution = [...rhs];
 
 	for (let pivot = 0; pivot < size; pivot++) {
 		let pivotRow = pivot;
 		for (let row = pivot + 1; row < size; row++) {
-			if (Math.abs(augmented[row]![pivot]!) > Math.abs(augmented[pivotRow]![pivot]!)) {
+			if (Math.abs(augmented.get(row, pivot)!) > Math.abs(augmented.get(pivotRow, pivot)!)) {
 				pivotRow = row;
 			}
 		}
 
-		if (Math.abs(augmented[pivotRow]![pivot]!) <= EPSILON) {
+		if (Math.abs(augmented.get(pivotRow, pivot)!) <= EPSILON) {
 			return undefined;
 		}
 
 		if (pivotRow !== pivot) {
-			[augmented[pivot]!, augmented[pivotRow]!] = [augmented[pivotRow]!, augmented[pivot]!];
+			for (let col = pivot; col < size; col++) {
+				const i1 = augmented.index(pivot, col);
+				const i2 = augmented.index(pivotRow, col);
+				[augmented.values[i1]!, augmented.values[i2]!] = [augmented.values[i2]!, augmented.values[i1]!];
+			}
+
+			[solution[pivot], solution[pivotRow]] = [solution[pivotRow]!, solution[pivot]!];
 		}
 
-		const pivotValues = augmented[pivot]!;
-		const pivotValue = pivotValues[pivot]!;
-		for (let column = pivot; column <= size; column++) {
-			pivotValues[column] = pivotValues[column]! / pivotValue;
+		const pivotValue = augmented.get(pivot, pivot)!;
+		for (let col = pivot; col < size; col++) {
+			augmented.values[augmented.index(pivot, col)]! /= pivotValue;
 		}
+		solution[pivot]! /= pivotValue;
 
 		for (let row = 0; row < size; row++) {
 			if (row === pivot) {
 				continue;
 			}
 
-			const currentRow = augmented[row]!;
-			const factor = currentRow[pivot]!;
+			const factor = augmented.get(row, pivot)!;
 			if (Math.abs(factor) <= EPSILON) {
 				continue;
 			}
 
-			for (let column = pivot; column <= size; column++) {
-				currentRow[column] = currentRow[column]! - factor * pivotValues[column]!;
+			for (let col = pivot; col < size; col++) {
+				augmented.values[augmented.index(row, col)]! -= factor * augmented.get(pivot, col)!;
 			}
+			solution[row]! -= factor * solution[pivot]!;
 		}
 	}
 
-	return augmented.map(row => row[size]!);
+	return solution;
 }
 
 function limitStepMagnitude(step: number[], maxStep: number) {
